@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.0.0"
+VERSION="2.0.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -260,6 +260,20 @@ cmd_install() {
 
   # Check if hook already exists
   if [[ -f "$HOOK_PATH" ]]; then
+    # Check for legacy ai-code-review and migrate
+    if grep -q "ai-code-review" "$HOOK_PATH"; then
+      log_warning "Found legacy 'ai-code-review' in hook, migrating to 'gga'..."
+      if [[ "$(uname)" == "Darwin" ]]; then
+        sed -i '' 's/ai-code-review/gga/g' "$HOOK_PATH"
+        sed -i '' 's/AI Code Review/Gentleman Guardian Angel/g' "$HOOK_PATH"
+      else
+        sed -i 's/ai-code-review/gga/g' "$HOOK_PATH"
+        sed -i 's/AI Code Review/Gentleman Guardian Angel/g' "$HOOK_PATH"
+      fi
+      log_success "Migrated hook to use 'gga'"
+      exit 0
+    fi
+
     if grep -q "gga" "$HOOK_PATH"; then
       log_warning "Gentleman Guardian Angel hook already installed"
       exit 0
