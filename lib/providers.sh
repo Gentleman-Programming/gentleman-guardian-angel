@@ -83,7 +83,7 @@ validate_provider() {
           echo ""
           echo "Specify model in provider config:"
           echo "  PROVIDER=\"github:gpt-4.1\""
-          echo "  PROVIDER=\"github:mistral-large\""
+          echo "  PROVIDER=\"github:phi-4\""
           echo ""
           return 1
       fi
