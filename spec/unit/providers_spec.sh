@@ -27,6 +27,12 @@ Describe 'providers.sh'
       The output should include "llama3.2"
     End
 
+    It 'returns info for github models with model name'
+      When call get_provider_info "github:gpt-4.1"
+      The output should include "GitHub"
+      The output should include "gpt-4.1"
+    End
+
     It 'returns unknown for invalid provider'
       When call get_provider_info "invalid"
       The output should include "Unknown"
@@ -50,28 +56,47 @@ Describe 'providers.sh'
     End
   End
 
+  Describe 'validate_provider() - github model validation'
+    It 'succeeds when github provider includes a model'
+      When call validate_provider "github:gpt-4.1"
+      The status should be success
+    End
+
+    It 'fails when github provider has no model'
+      When call validate_provider "github"
+      The status should be failure
+      The output should include "GitHub Models requires a model"
+    End
+
+    It 'fails when github provider ends with colon'
+      When call validate_provider "github:"
+      The status should be failure
+      The output should include "GitHub Models requires a model"
+    End
+  End
+
   Describe 'validate_provider() - ollama model validation'
     # Ollama validation has logic that checks model format
     # This can fail BEFORE checking if ollama CLI exists
-    
+
     # We need to test the model parsing logic
     # The function first checks CLI existence, then model
     # So we can't easily test the model validation without the CLI
-    
+
     # Instead, let's test the parsing helper if we had one
     # For now, we'll skip these or mark them as pending
-    
+
     Skip "Requires refactoring validate_provider to separate concerns"
   End
 
   Describe 'provider base extraction'
     # Test the base provider extraction logic
-    
+
     helper_get_base_provider() {
       local provider="$1"
       echo "${provider%%:*}"
     }
-    
+
     It 'extracts base provider from simple provider'
       When call helper_get_base_provider "claude"
       The output should eq "claude"

@@ -68,15 +68,6 @@ validate_provider() {
           return 1
       fi
 
-      if ! gh auth status &>/dev/null; then
-          echo -e "${RED}❌ Not authenticated with GitHub${NC}"
-          echo ""
-          echo "Run:"
-          echo "  gh auth login"
-          echo ""
-          return 1
-      fi
-
       local model="${provider#*:}"
       if [[ "$model" == "$provider" || -z "$model" ]]; then
           echo -e "${RED}❌ GitHub Models requires a model${NC}"
@@ -189,6 +180,15 @@ execute_codex() {
 execute_github_models() {
   local model="$1"
   local prompt="$2"
+
+  if ! gh auth status &>/dev/null; then
+      echo -e "${RED}❌ Not authenticated with GitHub${NC}"
+      echo ""
+      echo "Run:"
+      echo "  gh auth login"
+      echo ""
+      return 1
+  fi
 
   local token
   token="$(gh auth token 2>/dev/null)"
