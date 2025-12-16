@@ -6,6 +6,7 @@
 # Handles execution for different AI providers:
 # - claude: Anthropic Claude Code CLI
 # - gemini: Google Gemini CLI
+# - github:<model> Github Models with specified model
 # - codex: OpenAI Codex CLI
 # - ollama:<model>: Ollama with specified model
 # ============================================================================
@@ -55,6 +56,36 @@ validate_provider() {
         echo "  brew install --cask codex"
         echo ""
         return 1
+      fi
+      ;;
+    github)
+      if ! command -v gh &>/dev/null; then
+          echo -e "${RED}❌ GitHub CLI (gh) not found${NC}"
+          echo ""
+          echo "Install GitHub CLI:"
+          echo "  https://cli.github.com/"
+          echo ""
+          return 1
+      fi
+
+      if ! gh auth status &>/dev/null; then
+          echo -e "${RED}❌ Not authenticated with GitHub${NC}"
+          echo ""
+          echo "Run:"
+          echo "  gh auth login"
+          echo ""
+          return 1
+      fi
+
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+          echo -e "${RED}❌ GitHub Models requires a model${NC}"
+          echo ""
+          echo "Specify model in provider config:"
+          echo "  PROVIDER=\"github:gpt-4.1\""
+          echo "  PROVIDER=\"github:mistral-large\""
+          echo ""
+          return 1
       fi
       ;;
     ollama)
@@ -115,6 +146,10 @@ execute_provider() {
     codex)
       execute_codex "$prompt"
       ;;
+    github)
+      local model="${provider#*:}"
+      execute_github_models "$model" "$prompt"
+      ;;
     ollama)
       local model="${provider#*:}"
       execute_ollama "$model" "$prompt"
@@ -144,17 +179,57 @@ execute_gemini() {
 
 execute_codex() {
   local prompt="$1"
-  
+
   # Codex uses exec subcommand for non-interactive mode
   # Using --output-last-message to get just the final response
   codex exec "$prompt" 2>&1
   return $?
 }
 
+execute_github_models() {
+  local model="$1"
+  local prompt="$2"
+
+  local token
+  token="$(gh auth token 2>/dev/null)"
+
+  if [[ -z "$token" ]]; then
+      echo -e "${RED}❌ Unable to retrieve GitHub auth token${NC}"
+      return 1
+  fi
+
+  local response
+  response=$(
+      curl -sS https://models.inference.ai.azure.com/chat/completions \
+          -H "Authorization: Bearer $token" \
+          -H "Content-Type: application/json" \
+          -d "$(
+              jq -n \
+                  --arg model "$model" \
+                  --arg prompt "$prompt" \
+                  '{
+              model: $model,
+              messages: [
+                  { role: "system", content: "You are Guardian Angel a code reviewer." },
+                  { role: "user", content: $prompt }
+              ],
+              temperature: 0.2
+          }'
+          )"
+  )
+
+  if [[ $? -ne 0 || -z "$response" ]]; then
+      echo -e "${RED}❌ GitHub Models request failed${NC}"
+      return 1
+  fi
+
+  echo "$response" | jq -r '.choices[0].message.content'
+}
+
 execute_ollama() {
   local model="$1"
   local prompt="$2"
-  
+
   # Ollama accepts prompt as argument after model name
   ollama run "$model" "$prompt" 2>&1
   return $?
@@ -178,6 +253,10 @@ get_provider_info() {
     codex)
       echo "OpenAI Codex CLI"
       ;;
+    github)
+        local model="${provider#*:}"
+        echo "GitHub Models (model: $model)"
+        ;;
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"

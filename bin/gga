@@ -218,6 +218,8 @@ cmd_init() {
 #   PROVIDER="claude"
 #   PROVIDER="gemini"
 #   PROVIDER="codex"
+#   PROVIDER="github:gpt-4.1"
+#   PROVIDER="github:mistral-large"
 #   PROVIDER="ollama:llama3.2"
 #   PROVIDER="ollama:codellama"
 PROVIDER="claude"
