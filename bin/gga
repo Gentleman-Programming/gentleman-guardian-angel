@@ -70,7 +70,7 @@ print_help() {
   echo ""
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
-  echo "                     Values: claude, gemini, codex, ollama:<model>"
+  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>"
   echo "  FILE_PATTERNS      File patterns to review (default: *)"
   echo "                     Example: *.ts,*.tsx,*.js,*.jsx"
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
@@ -213,11 +213,13 @@ cmd_init() {
 # https://github.com/your-org/gga
 
 # AI Provider (required)
-# Options: claude, gemini, codex, ollama:<model>
+# Options: claude, gemini, codex, opencode, ollama:<model>
 # Examples:
 #   PROVIDER="claude"
 #   PROVIDER="gemini"
 #   PROVIDER="codex"
+#   PROVIDER="opencode"
+#   PROVIDER="opencode:anthropic/claude-3-opus"
 #   PROVIDER="ollama:llama3.2"
 #   PROVIDER="ollama:codellama"
 PROVIDER="claude"

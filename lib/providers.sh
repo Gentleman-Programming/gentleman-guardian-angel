@@ -7,6 +7,7 @@
 # - claude: Anthropic Claude Code CLI
 # - gemini: Google Gemini CLI
 # - codex: OpenAI Codex CLI
+# - opencode: OpenCode CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
 # ============================================================================
 
@@ -57,6 +58,16 @@ validate_provider() {
         return 1
       fi
       ;;
+    opencode)
+      if ! command -v opencode &> /dev/null; then
+        echo -e "${RED}❌ OpenCode CLI not found${NC}"
+        echo ""
+        echo "Install OpenCode CLI:"
+        echo "  https://opencode.ai"
+        echo ""
+        return 1
+      fi
+      ;;
     ollama)
       if ! command -v ollama &> /dev/null; then
         echo -e "${RED}❌ Ollama not found${NC}"
@@ -87,6 +98,7 @@ validate_provider() {
       echo "  - claude"
       echo "  - gemini"
       echo "  - codex"
+      echo "  - opencode"
       echo "  - ollama:<model>"
       echo ""
       return 1
@@ -114,6 +126,13 @@ execute_provider() {
       ;;
     codex)
       execute_codex "$prompt"
+      ;;
+    opencode)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_opencode "$model" "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -151,6 +170,19 @@ execute_codex() {
   return $?
 }
 
+execute_opencode() {
+  local model="$1"
+  local prompt="$2"
+  
+  # OpenCode CLI accepts prompt via stdin pipe or argument
+  if [[ -n "$model" ]]; then
+    echo "$prompt" | opencode run --model "$model" 2>&1
+  else
+    echo "$prompt" | opencode run 2>&1
+  fi
+  return "${PIPESTATUS[1]}"
+}
+
 execute_ollama() {
   local model="$1"
   local prompt="$2"
@@ -177,6 +209,14 @@ get_provider_info() {
       ;;
     codex)
       echo "OpenAI Codex CLI"
+      ;;
+    opencode)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        echo "OpenCode CLI"
+      else
+        echo "OpenCode CLI (model: $model)"
+      fi
       ;;
     ollama)
       local model="${provider#*:}"

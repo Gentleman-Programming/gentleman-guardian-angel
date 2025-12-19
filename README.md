@@ -11,7 +11,7 @@
 
 <p align="center">
   <strong>Provider-agnostic code review using AI</strong><br>
-  Use Claude, Gemini, Codex, Ollama, or any AI to enforce your coding standards.<br>
+  Use Claude, Gemini, Codex, OpenCode, Ollama, or any AI to enforce your coding standards.<br>
   Zero dependencies. Pure Bash. Works everywhere.
 </p>
 
@@ -432,6 +432,7 @@ Use whichever AI CLI you have installed:
 | **Claude** | `claude` | `echo "prompt" \| claude --print` | [claude.ai/code](https://claude.ai/code) |
 | **Gemini** | `gemini` | `echo "prompt" \| gemini` | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
 | **Codex** | `codex` | `codex exec "prompt"` | `npm i -g @openai/codex` |
+| **OpenCode** | `opencode` | `echo "prompt" \| opencode run` | [opencode.ai](https://opencode.ai) |
 | **Ollama** | `ollama:<model>` | `ollama run <model> "prompt"` | [ollama.ai](https://ollama.ai) |
 
 ### Provider Examples
@@ -445,6 +446,12 @@ PROVIDER="gemini"
 
 # Use OpenAI Codex
 PROVIDER="codex"
+
+# Use OpenCode (uses default model)
+PROVIDER="opencode"
+
+# Use OpenCode with specific model
+PROVIDER="opencode:anthropic/claude-3-opus"
 
 # Use Ollama with Llama 3.2
 PROVIDER="ollama:llama3.2"
