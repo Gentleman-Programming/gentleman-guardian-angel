@@ -130,7 +130,7 @@ execute_claude() {
   local prompt="$1"
   
   # Claude CLI accepts prompt via stdin pipe
-  echo "$prompt" | claude --print 2>&1
+  echo "$prompt" | claude --print
   return "${PIPESTATUS[1]}"
 }
 
@@ -138,7 +138,7 @@ execute_gemini() {
   local prompt="$1"
   
   # Gemini CLI accepts prompt via stdin pipe or -p flag
-  echo "$prompt" | gemini 2>&1
+  echo "$prompt" | gemini
   return "${PIPESTATUS[1]}"
 }
 
@@ -147,7 +147,7 @@ execute_codex() {
   
   # Codex uses exec subcommand for non-interactive mode
   # Using --output-last-message to get just the final response
-  codex exec "$prompt" 2>&1
+  codex exec "$prompt"
   return $?
 }
 
@@ -156,7 +156,7 @@ execute_ollama() {
   local prompt="$2"
   
   # Ollama accepts prompt as argument after model name
-  ollama run "$model" "$prompt" 2>&1
+  ollama run "$model" "$prompt"
   return $?
 }
 
