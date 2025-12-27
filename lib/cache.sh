@@ -6,7 +6,7 @@
 # Intelligent caching to avoid re-reviewing unchanged files.
 # Cache invalidates when:
 #   - File content changes (hash)
-#   - Rules file (AGENTS.md) changes
+#   - Any rules file changes (supports multiple files via RULES_FILES)
 #   - Config file (.gga) changes
 # ============================================================================
 
@@ -43,23 +43,31 @@ get_project_id() {
   fi
 }
 
-# Get metadata hash (rules + config combined)
+# Get metadata hash (rules files + config combined)
+# Supports multiple rules files via comma-separated RULES_FILES
 get_metadata_hash() {
-  local rules_file="$1"
+  local rules_files="$1"  # Comma-separated list of rules files
   local config_file="$2"
   
-  local rules_hash=""
+  local combined_rules_hash=""
   local config_hash=""
   
-  if [[ -f "$rules_file" ]]; then
-    rules_hash=$(get_file_hash "$rules_file")
-  fi
+  # Hash each rules file and combine
+  IFS=',' read -ra files_array <<< "$rules_files"
+  for file in "${files_array[@]}"; do
+    file=$(echo "$file" | xargs)  # Trim whitespace
+    if [[ -n "$file" && -f "$file" ]]; then
+      local file_hash
+      file_hash=$(get_file_hash "$file")
+      combined_rules_hash="${combined_rules_hash}:${file_hash}"
+    fi
+  done
   
   if [[ -f "$config_file" ]]; then
     config_hash=$(get_file_hash "$config_file")
   fi
   
-  get_string_hash "${rules_hash}:${config_hash}"
+  get_string_hash "${combined_rules_hash}:${config_hash}"
 }
 
 # Get project cache directory
