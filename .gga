@@ -1,0 +1,61 @@
+# Gentleman Guardian Angel Configuration
+# https://github.com/Gentleman-Programming/gentleman-guardian-angel
+
+# AI Provider (required)
+# Options: claude, gemini, codex, ollama:<model>
+# Examples:
+#   PROVIDER="claude"
+#   PROVIDER="gemini"
+#   PROVIDER="codex"
+#   PROVIDER="ollama:llama3.2"
+#   PROVIDER="ollama:codellama"
+PROVIDER="claude"
+
+# File patterns to include in review (comma-separated)
+# Default: * (all files)
+# Examples:
+#   FILE_PATTERNS="*.ts,*.tsx"
+#   FILE_PATTERNS="*.py"
+#   FILE_PATTERNS="*.go,*.mod"
+FILE_PATTERNS="*.sh"
+
+# File patterns to exclude from review (comma-separated)
+# Default: none
+# Examples:
+#   EXCLUDE_PATTERNS="*.test.ts,*.spec.ts"
+#   EXCLUDE_PATTERNS="*_test.go,*.mock.ts"
+EXCLUDE_PATTERNS=""
+
+# File containing code review rules
+# Default: AGENTS.md
+RULES_FILE="README.md"
+
+# Strict mode: fail if AI response is ambiguous
+# Default: true
+STRICT_MODE="true"
+
+# Extra instructions to prepend to the AI prompt (optional)
+# Supports multiline using heredoc syntax or $'...\n...' syntax
+# Default: none
+#
+# Example 1 - Heredoc (recommended for multiple lines):
+# EXTRA_INSTRUCTIONS=$(cat <<'INSTRUCTIONS'
+# Focus especially on error handling and security.
+# Be strict about hardcoded secrets or API keys.
+# Flag any console.log statements in production code.
+# INSTRUCTIONS
+# )
+#
+# Example 2 - Single line with escapes:
+# EXTRA_INSTRUCTIONS=$'Focus on security.\nBe strict about secrets.'
+#
+# Example 3 - Simple single line:
+# EXTRA_INSTRUCTIONS="Focus on error handling and security."
+
+# Active extra instructions for this project
+EXTRA_INSTRUCTIONS=$(cat <<'INSTRUCTIONS'
+Focus especially on shell script best practices.
+Check for proper error handling with set -e.
+Verify all variables are properly quoted.
+INSTRUCTIONS
+)
