@@ -9,12 +9,14 @@
 
 set -e
 
-VERSION="2.2.1"
+VERSION="2.3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 # Source library functions
+# shellcheck source=lib/providers.sh
 source "$LIB_DIR/providers.sh"
+# shellcheck source=lib/cache.sh
 source "$LIB_DIR/cache.sh"
 
 # Colors
@@ -29,6 +31,7 @@ NC='\033[0m' # No Color
 # Defaults
 DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
+DEFAULT_RULES_FILES=""  # Comma-separated list (takes precedence over RULES_FILE)
 DEFAULT_STRICT_MODE="true"
 
 # ============================================================================
@@ -70,12 +73,14 @@ print_help() {
   echo ""
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
-  echo "                     Values: claude, gemini, codex, ollama:<model>"
+  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>"
   echo "  FILE_PATTERNS      File patterns to review (default: *)"
   echo "                     Example: *.ts,*.tsx,*.js,*.jsx"
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
   echo "                     Example: *.test.ts,*.spec.ts,*.d.ts"
-  echo "  RULES_FILE         File containing review rules (default: AGENTS.md)"
+  echo "  RULES_FILE         Single file containing review rules (default: AGENTS.md)"
+  echo "  RULES_FILES        Multiple rules files, comma-separated (overrides RULES_FILE)"
+  echo "                     Example: AGENTS.md,STYLE.md,CODE-REVIEW.md"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
@@ -120,17 +125,20 @@ load_config() {
   FILE_PATTERNS="$DEFAULT_FILE_PATTERNS"
   EXCLUDE_PATTERNS=""
   RULES_FILE="$DEFAULT_RULES_FILE"
+  RULES_FILES="$DEFAULT_RULES_FILES"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
 
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
   if [[ -f "$GLOBAL_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$GLOBAL_CONFIG"
   fi
 
   # Load project config (overrides global)
   PROJECT_CONFIG=".gga"
   if [[ -f "$PROJECT_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$PROJECT_CONFIG"
   fi
 
@@ -138,6 +146,70 @@ load_config() {
   if [[ -n "$GGA_PROVIDER" ]]; then
     PROVIDER="$GGA_PROVIDER"
   fi
+  
+  # Normalize rules files: if RULES_FILES is set, use it; otherwise use RULES_FILE
+  # This allows backward compatibility with single RULES_FILE config
+  if [[ -z "$RULES_FILES" && -n "$RULES_FILE" ]]; then
+    RULES_FILES="$RULES_FILE"
+  fi
+}
+
+# Get array of rules files from comma-separated RULES_FILES
+get_rules_files_array() {
+  local files_str="$1"
+  local -a files_array=()
+  
+  IFS=',' read -ra files_array <<< "$files_str"
+  
+  # Trim whitespace from each element
+  for i in "${!files_array[@]}"; do
+    files_array[i]=$(echo "${files_array[i]}" | xargs)
+  done
+  
+  printf '%s\n' "${files_array[@]}"
+}
+
+# Check if all rules files exist
+validate_rules_files() {
+  local files_str="$1"
+  local missing=""
+  
+  while IFS= read -r file; do
+    if [[ -n "$file" && ! -f "$file" ]]; then
+      if [[ -n "$missing" ]]; then
+        missing="$missing, $file"
+      else
+        missing="$file"
+      fi
+    fi
+  done <<< "$(get_rules_files_array "$files_str")"
+  
+  if [[ -n "$missing" ]]; then
+    echo "$missing"
+    return 1
+  fi
+  return 0
+}
+
+# Read and concatenate all rules files with headers
+read_all_rules() {
+  local files_str="$1"
+  local first=true
+  
+  while IFS= read -r file; do
+    if [[ -n "$file" && -f "$file" ]]; then
+      if [[ "$first" == true ]]; then
+        first=false
+      else
+        echo ""
+        echo "---"
+        echo ""
+      fi
+      echo "# From: $file"
+      echo ""
+      cat "$file"
+    fi
+  done <<< "$(get_rules_files_array "$files_str")"
 }
 
 # ============================================================================
@@ -181,16 +253,21 @@ cmd_config() {
   else
     echo -e "  EXCLUDE_PATTERNS:  ${YELLOW}None${NC}"
   fi
-  echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
+  echo -e "  RULES_FILES:       ${CYAN}$RULES_FILES${NC}"
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
   echo ""
 
-  # Check if rules file exists
-  if [[ -f "$RULES_FILE" ]]; then
-    echo -e "${BOLD}Rules File:${NC} ${GREEN}Found${NC}"
-  else
-    echo -e "${BOLD}Rules File:${NC} ${RED}Not found ($RULES_FILE)${NC}"
-  fi
+  # Check if rules files exist
+  echo -e "${BOLD}Rules Files:${NC}"
+  while IFS= read -r file; do
+    if [[ -n "$file" ]]; then
+      if [[ -f "$file" ]]; then
+        echo -e "  ${GREEN}✓${NC} $file"
+      else
+        echo -e "  ${RED}✗${NC} $file ${RED}(not found)${NC}"
+      fi
+    fi
+  done <<< "$(get_rules_files_array "$RULES_FILES")"
   echo ""
 }
 
@@ -201,7 +278,7 @@ cmd_init() {
   
   if [[ -f "$PROJECT_CONFIG" ]]; then
     log_warning "Config file already exists: $PROJECT_CONFIG"
-    read -p "Overwrite? (y/N): " confirm
+    read -rp "Overwrite? (y/N): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
       echo "Aborted."
       exit 0
@@ -210,14 +287,16 @@ cmd_init() {
 
   cat > "$PROJECT_CONFIG" << 'EOF'
 # Gentleman Guardian Angel Configuration
-# https://github.com/your-org/gga
+# https://github.com/Gentleman-Programming/gentleman-guardian-angel
 
 # AI Provider (required)
-# Options: claude, gemini, codex, ollama:<model>
+# Options: claude, gemini, codex, opencode, opencode:<model>, ollama:<model>
 # Examples:
 #   PROVIDER="claude"
 #   PROVIDER="gemini"
 #   PROVIDER="codex"
+#   PROVIDER="opencode"
+#   PROVIDER="opencode:anthropic/claude-opus-4-5"
 #   PROVIDER="ollama:llama3.2"
 #   PROVIDER="ollama:codellama"
 PROVIDER="claude"
@@ -237,8 +316,12 @@ FILE_PATTERNS="*.ts,*.tsx,*.js,*.jsx"
 #   EXCLUDE_PATTERNS="*_test.go,*.mock.ts"
 EXCLUDE_PATTERNS="*.test.ts,*.spec.ts,*.test.tsx,*.spec.tsx,*.d.ts"
 
-# File containing code review rules
+# Files containing code review rules (comma-separated)
+# Use RULES_FILES for multiple files, or RULES_FILE for single file (backward compatible)
 # Default: AGENTS.md
+# Examples:
+#   RULES_FILE="AGENTS.md"
+#   RULES_FILES="AGENTS.md,STYLE.md,CODE-REVIEW.md"
 RULES_FILE="AGENTS.md"
 
 # Strict mode: fail if AI response is ambiguous
@@ -288,15 +371,17 @@ cmd_install() {
       exit 0
     else
       log_warning "A pre-commit hook already exists"
-      read -p "Append Gentleman Guardian Angel to existing hook? (y/N): " confirm
+      read -rp "Append Gentleman Guardian Angel to existing hook? (y/N): " confirm
       if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
         echo "Aborted."
         exit 0
       fi
       # Append to existing hook
-      echo "" >> "$HOOK_PATH"
-      echo "# Gentleman Guardian Angel" >> "$HOOK_PATH"
-      echo 'gga run || exit 1' >> "$HOOK_PATH"
+      {
+        echo ""
+        echo "# Gentleman Guardian Angel"
+        echo 'gga run || exit 1'
+      } >> "$HOOK_PATH"
       log_success "Appended Gentleman Guardian Angel to existing hook"
       exit 0
     fi
@@ -385,7 +470,7 @@ cmd_cache() {
         echo -e "  Cache directory: ${CYAN}$cache_dir${NC}"
         
         # Check if cache is valid
-        if is_cache_valid "$RULES_FILE" ".gga"; then
+        if is_cache_valid "$RULES_FILES" ".gga"; then
           echo -e "  Cache validity: ${GREEN}Valid${NC}"
         else
           echo -e "  Cache validity: ${YELLOW}Invalid (rules or config changed)${NC}"
@@ -450,11 +535,12 @@ cmd_run() {
     exit 1
   fi
 
-  # Check rules file exists
-  if [[ ! -f "$RULES_FILE" ]]; then
-    log_error "Rules file not found: $RULES_FILE"
+  # Check rules files exist
+  local missing_files
+  if ! missing_files=$(validate_rules_files "$RULES_FILES"); then
+    log_error "Rules file(s) not found: $missing_files"
     echo ""
-    echo "Please create a ${BOLD}$RULES_FILE${NC} file with your coding standards."
+    echo "Please create the missing file(s) with your coding standards."
     echo ""
     echo "Example content:"
     echo "  # Code Review Rules"
@@ -463,16 +549,12 @@ cmd_run() {
     echo "  - Use const/let, never var"
     echo "  - Prefer interfaces over types"
     echo "  - No any types"
-    echo "  "
-    echo "  ## React"
-    echo "  - Use functional components"
-    echo "  - Prefer named exports"
     echo ""
     exit 1
   fi
 
   log_info "Provider: $PROVIDER"
-  log_info "Rules file: $RULES_FILE"
+  log_info "Rules files: $RULES_FILES"
   log_info "File patterns: $FILE_PATTERNS"
   if [[ -n "$EXCLUDE_PATTERNS" ]]; then
     log_info "Exclude patterns: $EXCLUDE_PATTERNS"
@@ -501,13 +583,13 @@ cmd_run() {
   
   if [[ "$use_cache" == true ]]; then
     # Check if cache is valid, if not invalidate it
-    if ! is_cache_valid "$RULES_FILE" ".gga"; then
+    if ! is_cache_valid "$RULES_FILES" ".gga"; then
       log_info "Cache invalidated (rules or config changed)"
       invalidate_cache
     fi
     
     # Initialize cache
-    init_cache "$RULES_FILE" ".gga" > /dev/null
+    init_cache "$RULES_FILES" ".gga" > /dev/null
     cache_initialized=true
     
     # Filter out cached files
@@ -548,8 +630,8 @@ cmd_run() {
   done
   echo ""
 
-  # Read rules
-  RULES=$(cat "$RULES_FILE")
+  # Read all rules files
+  RULES=$(read_all_rules "$RULES_FILES")
 
   # Build prompt only with files to review
   PROMPT=$(build_prompt "$RULES" "$files_to_review")

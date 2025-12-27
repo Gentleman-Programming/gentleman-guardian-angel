@@ -1,0 +1,41 @@
+# Gentleman Guardian Angel Configuration
+# https://github.com/Gentleman-Programming/gentleman-guardian-angel
+
+# AI Provider (required)
+# Options: claude, gemini, codex, opencode, opencode:<model>, ollama:<model>
+# Examples:
+#   PROVIDER="claude"
+#   PROVIDER="gemini"
+#   PROVIDER="codex"
+#   PROVIDER="opencode"
+#   PROVIDER="opencode:anthropic/claude-opus-4-5"
+#   PROVIDER="ollama:llama3.2"
+#   PROVIDER="ollama:codellama"
+PROVIDER="claude"
+
+# File patterns to include in review (comma-separated)
+# Default: * (all files)
+# Examples:
+#   FILE_PATTERNS="*.ts,*.tsx"
+#   FILE_PATTERNS="*.py"
+#   FILE_PATTERNS="*.go,*.mod"
+FILE_PATTERNS="*.sh"
+
+# File patterns to exclude from review (comma-separated)
+# Default: none
+# Examples:
+#   EXCLUDE_PATTERNS="*.test.ts,*.spec.ts"
+#   EXCLUDE_PATTERNS="*_test.go,*.mock.ts"
+EXCLUDE_PATTERNS=""
+
+# Files containing code review rules (comma-separated)
+# Use RULES_FILES for multiple files, or RULES_FILE for single file (backward compatible)
+# Default: AGENTS.md
+# Examples:
+#   RULES_FILE="AGENTS.md"
+#   RULES_FILES="AGENTS.md,STYLE.md,CODE-REVIEW.md"
+RULES_FILES="README.md"
+
+# Strict mode: fail if AI response is ambiguous
+# Default: true
+STRICT_MODE="true"

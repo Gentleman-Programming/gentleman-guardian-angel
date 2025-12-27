@@ -9,7 +9,6 @@
 set -e
 
 # Colors
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
@@ -49,7 +48,7 @@ fi
 GLOBAL_CONFIG="$HOME/.config/gga"
 if [[ -d "$GLOBAL_CONFIG" ]]; then
   echo ""
-  read -p "Remove global config ($GLOBAL_CONFIG)? (y/N): " confirm
+  read -rp "Remove global config ($GLOBAL_CONFIG)? (y/N): " confirm
   if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
     rm -rf "$GLOBAL_CONFIG"
     echo -e "${GREEN}✅ Removed: $GLOBAL_CONFIG${NC}"
