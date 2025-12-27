@@ -14,7 +14,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 # Source library functions
+# shellcheck source=lib/providers.sh
 source "$LIB_DIR/providers.sh"
+# shellcheck source=lib/cache.sh
 source "$LIB_DIR/cache.sh"
 
 # Colors
@@ -30,6 +32,7 @@ NC='\033[0m' # No Color
 DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
 DEFAULT_STRICT_MODE="true"
+DEFAULT_EXTRA_INSTRUCTIONS=""
 
 # ============================================================================
 # Helper Functions
@@ -77,6 +80,8 @@ print_help() {
   echo "                     Example: *.test.ts,*.spec.ts,*.d.ts"
   echo "  RULES_FILE         File containing review rules (default: AGENTS.md)"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
+  echo "  EXTRA_INSTRUCTIONS Extra instructions prepended to AI prompt"
+  echo "                     Supports multiline via heredoc syntax"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init          # Create sample config"
@@ -121,16 +126,19 @@ load_config() {
   EXCLUDE_PATTERNS=""
   RULES_FILE="$DEFAULT_RULES_FILE"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
+  EXTRA_INSTRUCTIONS="$DEFAULT_EXTRA_INSTRUCTIONS"
 
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
   if [[ -f "$GLOBAL_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$GLOBAL_CONFIG"
   fi
 
   # Load project config (overrides global)
   PROJECT_CONFIG=".gga"
   if [[ -f "$PROJECT_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$PROJECT_CONFIG"
   fi
 
@@ -183,6 +191,14 @@ cmd_config() {
   fi
   echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
+  if [[ -n "$EXTRA_INSTRUCTIONS" ]]; then
+    # Count lines in extra instructions
+    local line_count
+    line_count=$(echo "$EXTRA_INSTRUCTIONS" | wc -l | xargs)
+    echo -e "  EXTRA_INSTRUCTIONS: ${GREEN}Set ($line_count lines)${NC}"
+  else
+    echo -e "  EXTRA_INSTRUCTIONS: ${YELLOW}None${NC}"
+  fi
   echo ""
 
   # Check if rules file exists
@@ -201,7 +217,7 @@ cmd_init() {
   
   if [[ -f "$PROJECT_CONFIG" ]]; then
     log_warning "Config file already exists: $PROJECT_CONFIG"
-    read -p "Overwrite? (y/N): " confirm
+    read -rp "Overwrite? (y/N): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
       echo "Aborted."
       exit 0
@@ -210,7 +226,7 @@ cmd_init() {
 
   cat > "$PROJECT_CONFIG" << 'EOF'
 # Gentleman Guardian Angel Configuration
-# https://github.com/your-org/gga
+# https://github.com/Gentleman-Programming/gentleman-guardian-angel
 
 # AI Provider (required)
 # Options: claude, gemini, codex, ollama:<model>
@@ -244,6 +260,24 @@ RULES_FILE="AGENTS.md"
 # Strict mode: fail if AI response is ambiguous
 # Default: true
 STRICT_MODE="true"
+
+# Extra instructions to prepend to the AI prompt (optional)
+# Supports multiline using heredoc syntax or $'...\n...' syntax
+# Default: none
+#
+# Example 1 - Heredoc (recommended for multiple lines):
+# EXTRA_INSTRUCTIONS=$(cat <<'INSTRUCTIONS'
+# Focus especially on error handling and security.
+# Be strict about hardcoded secrets or API keys.
+# Flag any console.log statements in production code.
+# INSTRUCTIONS
+# )
+#
+# Example 2 - Single line with escapes:
+# EXTRA_INSTRUCTIONS=$'Focus on security.\nBe strict about secrets.'
+#
+# Example 3 - Simple single line:
+# EXTRA_INSTRUCTIONS="Focus on error handling and security."
 EOF
 
   log_success "Created config file: $PROJECT_CONFIG"
@@ -288,15 +322,17 @@ cmd_install() {
       exit 0
     else
       log_warning "A pre-commit hook already exists"
-      read -p "Append Gentleman Guardian Angel to existing hook? (y/N): " confirm
+      read -rp "Append Gentleman Guardian Angel to existing hook? (y/N): " confirm
       if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
         echo "Aborted."
         exit 0
       fi
       # Append to existing hook
-      echo "" >> "$HOOK_PATH"
-      echo "# Gentleman Guardian Angel" >> "$HOOK_PATH"
-      echo 'gga run || exit 1' >> "$HOOK_PATH"
+      {
+        echo ""
+        echo "# Gentleman Guardian Angel"
+        echo 'gga run || exit 1'
+      } >> "$HOOK_PATH"
       log_success "Appended Gentleman Guardian Angel to existing hook"
       exit 0
     fi
@@ -476,6 +512,11 @@ cmd_run() {
   log_info "File patterns: $FILE_PATTERNS"
   if [[ -n "$EXCLUDE_PATTERNS" ]]; then
     log_info "Exclude patterns: $EXCLUDE_PATTERNS"
+  fi
+  if [[ -n "$EXTRA_INSTRUCTIONS" ]]; then
+    local line_count
+    line_count=$(echo "$EXTRA_INSTRUCTIONS" | wc -l | xargs)
+    log_info "Extra instructions: ${GREEN}$line_count line(s)${NC}"
   fi
   
   # Cache status
@@ -681,10 +722,24 @@ get_staged_files() {
 build_prompt() {
   local rules="$1"
   local files="$2"
+  local extra="${EXTRA_INSTRUCTIONS:-}"
 
   # Start building the prompt
   cat << EOF
 You are a code reviewer. Analyze the files below and validate they comply with the coding standards provided.
+EOF
+
+  # Add extra instructions if provided
+  if [[ -n "$extra" ]]; then
+    cat << EOF
+
+=== ADDITIONAL INSTRUCTIONS ===
+$extra
+=== END ADDITIONAL INSTRUCTIONS ===
+EOF
+  fi
+
+  cat << EOF
 
 === CODING STANDARDS ===
 $rules
