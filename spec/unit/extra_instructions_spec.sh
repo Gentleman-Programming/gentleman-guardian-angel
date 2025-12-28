@@ -99,6 +99,24 @@ EOF
       The variable EXTRA_INSTRUCTIONS should include "sk-xxxx"
     End
 
+    It 'preserves backticks and dollar signs with quoted heredoc'
+      cat > .gga << 'EOF'
+PROVIDER="claude"
+EXTRA_INSTRUCTIONS=$(cat <<'INSTRUCTIONS'
+Check for patterns like `unwrap()` and `expect()`.
+Verify $variables are not hardcoded.
+Look for ${PLACEHOLDER} patterns.
+INSTRUCTIONS
+)
+EOF
+      # shellcheck source=/dev/null
+      source .gga
+      The variable EXTRA_INSTRUCTIONS should include '`unwrap()`'
+      The variable EXTRA_INSTRUCTIONS should include '`expect()`'
+      The variable EXTRA_INSTRUCTIONS should include '$variables'
+      The variable EXTRA_INSTRUCTIONS should include '${PLACEHOLDER}'
+    End
+
     It 'counts lines correctly for multiline instructions'
       cat > .gga << 'EOF'
 PROVIDER="claude"

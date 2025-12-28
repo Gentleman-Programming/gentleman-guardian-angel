@@ -265,18 +265,19 @@ STRICT_MODE="true"
 # Supports multiline using heredoc syntax or $'...\n...' syntax
 # Default: none
 #
-# Example 1 - Heredoc (recommended for multiple lines):
+# IMPORTANT: For complex instructions with special characters (backticks,
+# quotes, $variables), use the heredoc syntax with 'INSTRUCTIONS' quoted
+# to prevent shell interpretation.
+#
+# Example 1 - Heredoc (RECOMMENDED for multiple lines):
 # EXTRA_INSTRUCTIONS=$(cat <<'INSTRUCTIONS'
 # Focus especially on error handling and security.
 # Be strict about hardcoded secrets or API keys.
-# Flag any console.log statements in production code.
+# Check for patterns like `console.log()` or $variables.
 # INSTRUCTIONS
 # )
 #
-# Example 2 - Single line with escapes:
-# EXTRA_INSTRUCTIONS=$'Focus on security.\nBe strict about secrets.'
-#
-# Example 3 - Simple single line:
+# Example 2 - Simple single line (no special characters):
 # EXTRA_INSTRUCTIONS="Focus on error handling and security."
 EOF
 
