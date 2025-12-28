@@ -731,6 +731,9 @@ cmd_run() {
     echo ""
     echo "Fix the violations listed above before committing."
     echo ""
+    echo "⚠️  RECOVERY TIP: Do NOT use destructive git commands (git reset, git read-tree, etc.)"
+    echo "   Simply fix the issues and run 'git commit' again. Your staged changes are preserved."
+    echo ""
     exit 1
   else
     log_warning "Could not determine review status"
@@ -739,6 +742,9 @@ cmd_run() {
       echo ""
       echo "The AI response must start with 'STATUS: PASSED' or 'STATUS: FAILED'"
       echo "Set STRICT_MODE=false in config to allow ambiguous responses"
+      echo ""
+      echo "⚠️  RECOVERY TIP: Do NOT use destructive git commands (git reset, git read-tree, etc.)"
+      echo "   Simply fix the issues and run 'git commit' again. Your staged changes are preserved."
       echo ""
       exit 1
     else
