@@ -30,6 +30,7 @@ NC='\033[0m' # No Color
 DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
 DEFAULT_STRICT_MODE="true"
+DEFAULT_INCLUDE_COMMIT_MSG="false"
 
 # ============================================================================
 # Helper Functions
@@ -77,6 +78,9 @@ print_help() {
   echo "                     Example: *.test.ts,*.spec.ts,*.d.ts"
   echo "  RULES_FILE         File containing review rules (default: AGENTS.md)"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
+  echo "  INCLUDE_COMMIT_MSG Include commit message in AI review (default: false)"
+  echo "                     Note: In pre-commit hook, message isn't available yet."
+  echo "                     Works with: commit-msg hook, --amend, or GGA_COMMIT_MSG env"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init          # Create sample config"
@@ -121,6 +125,7 @@ load_config() {
   EXCLUDE_PATTERNS=""
   RULES_FILE="$DEFAULT_RULES_FILE"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
+  INCLUDE_COMMIT_MSG="$DEFAULT_INCLUDE_COMMIT_MSG"
 
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
@@ -183,6 +188,7 @@ cmd_config() {
   fi
   echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
+  echo -e "  INCLUDE_COMMIT_MSG: ${CYAN}$INCLUDE_COMMIT_MSG${NC}"
   echo ""
 
   # Check if rules file exists
@@ -244,6 +250,12 @@ RULES_FILE="AGENTS.md"
 # Strict mode: fail if AI response is ambiguous
 # Default: true
 STRICT_MODE="true"
+
+# Include commit message in AI review
+# When true, the staged commit message is passed to the AI reviewer
+# Useful for validating commit message format, conventional commits, etc.
+# Default: false
+INCLUDE_COMMIT_MSG="false"
 EOF
 
   log_success "Created config file: $PROJECT_CONFIG"
@@ -477,6 +489,9 @@ cmd_run() {
   if [[ -n "$EXCLUDE_PATTERNS" ]]; then
     log_info "Exclude patterns: $EXCLUDE_PATTERNS"
   fi
+  if [[ "$INCLUDE_COMMIT_MSG" == "true" ]]; then
+    log_info "Include commit message: ${GREEN}enabled${NC}"
+  fi
   
   # Cache status
   if [[ "$use_cache" == true ]]; then
@@ -551,8 +566,39 @@ cmd_run() {
   # Read rules
   RULES=$(cat "$RULES_FILE")
 
+  # Get commit message if enabled
+  # Note: This works when:
+  # 1. COMMIT_MSG_FILE env var is set (by commit-msg hook)
+  # 2. Running 'gga run' manually with GGA_COMMIT_MSG env var
+  # 3. On --amend (reads previous message from COMMIT_EDITMSG)
+  # 
+  # During pre-commit hook, the message is NOT yet available (git hasn't written it)
+  # For full commit message validation, consider using GGA in a commit-msg hook instead.
+  COMMIT_MSG=""
+  if [[ "$INCLUDE_COMMIT_MSG" == "true" ]]; then
+    if [[ -n "${GGA_COMMIT_MSG:-}" ]]; then
+      # Explicit message passed via env var
+      COMMIT_MSG="$GGA_COMMIT_MSG"
+    elif [[ -n "${COMMIT_MSG_FILE:-}" && -f "$COMMIT_MSG_FILE" ]]; then
+      # commit-msg hook passes the file path
+      COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+    else
+      # Try COMMIT_EDITMSG (works on --amend or after editor closes)
+      local editmsg_file
+      editmsg_file="$(git rev-parse --git-path COMMIT_EDITMSG 2>/dev/null)"
+      if [[ -f "$editmsg_file" ]]; then
+        COMMIT_MSG=$(cat "$editmsg_file")
+      fi
+    fi
+    
+    if [[ -z "$COMMIT_MSG" ]]; then
+      log_warning "No commit message available (pre-commit hook runs before message is written)"
+      log_info "Tip: Set GGA_COMMIT_MSG env var, or use GGA in a commit-msg hook"
+    fi
+  fi
+
   # Build prompt only with files to review
-  PROMPT=$(build_prompt "$RULES" "$files_to_review")
+  PROMPT=$(build_prompt "$RULES" "$files_to_review" "$COMMIT_MSG")
 
   # Execute review
   log_info "Sending to $PROVIDER for review..."
@@ -681,6 +727,7 @@ get_staged_files() {
 build_prompt() {
   local rules="$1"
   local files="$2"
+  local commit_msg="${3:-}"
 
   # Start building the prompt
   cat << EOF
@@ -689,6 +736,19 @@ You are a code reviewer. Analyze the files below and validate they comply with t
 === CODING STANDARDS ===
 $rules
 === END CODING STANDARDS ===
+EOF
+
+  # Include commit message if provided
+  if [[ -n "$commit_msg" ]]; then
+    cat << EOF
+
+=== COMMIT MESSAGE ===
+$commit_msg
+=== END COMMIT MESSAGE ===
+EOF
+  fi
+
+  cat << 'EOF'
 
 === FILES TO REVIEW ===
 EOF
