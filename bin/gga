@@ -14,7 +14,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 # Source library functions
+# shellcheck source=lib/providers.sh
 source "$LIB_DIR/providers.sh"
+# shellcheck source=lib/cache.sh
 source "$LIB_DIR/cache.sh"
 
 # Colors
@@ -125,12 +127,14 @@ load_config() {
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
   if [[ -f "$GLOBAL_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$GLOBAL_CONFIG"
   fi
 
   # Load project config (overrides global)
   PROJECT_CONFIG=".gga"
   if [[ -f "$PROJECT_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$PROJECT_CONFIG"
   fi
 
@@ -201,7 +205,7 @@ cmd_init() {
   
   if [[ -f "$PROJECT_CONFIG" ]]; then
     log_warning "Config file already exists: $PROJECT_CONFIG"
-    read -p "Overwrite? (y/N): " confirm
+    read -rp "Overwrite? (y/N): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
       echo "Aborted."
       exit 0
@@ -255,6 +259,10 @@ EOF
   echo ""
 }
 
+# Markers for GGA hook section (used for clean install/uninstall)
+GGA_MARKER_START="# ======== GGA START ========"
+GGA_MARKER_END="# ======== GGA END ========"
+
 cmd_install() {
   print_banner
 
@@ -264,8 +272,13 @@ cmd_install() {
     exit 1
   fi
 
-  GIT_ROOT=$(git rev-parse --show-toplevel)
-  HOOK_PATH="$GIT_ROOT/.git/hooks/pre-commit"
+  # Use --git-dir to correctly handle worktrees
+  # In a worktree, .git is a file pointing to the real git dir
+  GIT_DIR=$(git rev-parse --git-dir)
+  HOOK_PATH="$GIT_DIR/hooks/pre-commit"
+  
+  # Ensure hooks directory exists (may not exist in fresh repos)
+  mkdir -p "$GIT_DIR/hooks"
 
   # Check if hook already exists
   if [[ -f "$HOOK_PATH" ]]; then
@@ -283,31 +296,34 @@ cmd_install() {
       exit 0
     fi
 
-    if grep -q "gga" "$HOOK_PATH"; then
+    # Check if GGA is already installed (using markers)
+    if grep -q "$GGA_MARKER_START" "$HOOK_PATH"; then
       log_warning "Gentleman Guardian Angel hook already installed"
       exit 0
-    else
-      log_warning "A pre-commit hook already exists"
-      read -p "Append Gentleman Guardian Angel to existing hook? (y/N): " confirm
-      if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        echo "Aborted."
-        exit 0
-      fi
-      # Append to existing hook
-      echo "" >> "$HOOK_PATH"
-      echo "# Gentleman Guardian Angel" >> "$HOOK_PATH"
-      echo 'gga run || exit 1' >> "$HOOK_PATH"
-      log_success "Appended Gentleman Guardian Angel to existing hook"
-      exit 0
     fi
+    
+    # Existing hook without GGA - append with markers
+    log_info "Existing pre-commit hook found, appending GGA..."
+    {
+      echo ""
+      echo "$GGA_MARKER_START"
+      echo "# Gentleman Guardian Angel - Code Review"
+      echo 'gga run || exit 1'
+      echo "$GGA_MARKER_END"
+    } >> "$HOOK_PATH"
+    log_success "Appended Gentleman Guardian Angel to existing hook: $HOOK_PATH"
+    echo ""
+    exit 0
   fi
 
-  # Create new hook
-  cat > "$HOOK_PATH" << 'EOF'
+  # Create new hook with markers
+  cat > "$HOOK_PATH" << EOF
 #!/usr/bin/env bash
-# Git pre-commit hook - Gentleman Guardian Angel
 
+$GGA_MARKER_START
+# Gentleman Guardian Angel - Code Review
 gga run || exit 1
+$GGA_MARKER_END
 EOF
 
   chmod +x "$HOOK_PATH"
@@ -324,29 +340,57 @@ cmd_uninstall() {
     exit 1
   fi
 
-  GIT_ROOT=$(git rev-parse --show-toplevel)
-  HOOK_PATH="$GIT_ROOT/.git/hooks/pre-commit"
+  # Use --git-dir to correctly handle worktrees
+  GIT_DIR=$(git rev-parse --git-dir)
+  HOOK_PATH="$GIT_DIR/hooks/pre-commit"
 
   if [[ ! -f "$HOOK_PATH" ]]; then
     log_warning "No pre-commit hook found"
     exit 0
   fi
 
+  # Check for GGA using markers first (new format)
+  if grep -q "$GGA_MARKER_START" "$HOOK_PATH"; then
+    # Remove content between markers (inclusive)
+    if [[ "$(uname)" == "Darwin" ]]; then
+      sed -i '' "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$HOOK_PATH"
+    else
+      sed -i "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$HOOK_PATH"
+    fi
+    
+    # Check if file is now empty or only has shebang/whitespace
+    local remaining_content
+    remaining_content=$(grep -Ecv '^#!|^[[:space:]]*$' "$HOOK_PATH" || true)
+    if [[ "$remaining_content" -eq 0 ]]; then
+      rm "$HOOK_PATH"
+      log_success "Removed pre-commit hook (was GGA-only)"
+    else
+      log_success "Removed Gentleman Guardian Angel from pre-commit hook"
+    fi
+    echo ""
+    exit 0
+  fi
+
+  # Fallback: check for legacy format (without markers)
   if ! grep -q "gga" "$HOOK_PATH"; then
     log_warning "Gentleman Guardian Angel hook not found in pre-commit"
     exit 0
   fi
 
-  # Check if it's our hook only or mixed
+  # Legacy format: check if it's our hook only or mixed
   if grep -q "^gga run" "$HOOK_PATH" && [[ $(wc -l < "$HOOK_PATH") -le 5 ]]; then
     # It's only our hook, remove the file
     rm "$HOOK_PATH"
     log_success "Removed pre-commit hook"
   else
-    # Mixed hook, just remove our lines
-    sed -i.bak '/# Gentleman Guardian Angel/d' "$HOOK_PATH"
-    sed -i.bak '/gga run/d' "$HOOK_PATH"
-    rm -f "$HOOK_PATH.bak"
+    # Mixed hook, just remove our lines (legacy format)
+    if [[ "$(uname)" == "Darwin" ]]; then
+      sed -i '' '/# Gentleman Guardian Angel/d' "$HOOK_PATH"
+      sed -i '' '/gga run/d' "$HOOK_PATH"
+    else
+      sed -i '/# Gentleman Guardian Angel/d' "$HOOK_PATH"
+      sed -i '/gga run/d' "$HOOK_PATH"
+    fi
     log_success "Removed Gentleman Guardian Angel from pre-commit hook"
   fi
   echo ""
