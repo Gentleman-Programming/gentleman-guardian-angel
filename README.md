@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.2.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.3.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/bash-5.0%2B-orange.svg" alt="Bash">
   <img src="https://img.shields.io/badge/homebrew-tap-FBB040.svg" alt="Homebrew">
-  <img src="https://img.shields.io/badge/tests-68%20passing-brightgreen.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-104%20passing-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
 </p>
 
@@ -524,34 +524,142 @@ export GGA_PROVIDER="ollama:llama3.2"
 
 ## 📝 Rules File (AGENTS.md)
 
-The AI needs to know your standards. Create an `AGENTS.md` file:
+The AI needs to know your standards. Create an `AGENTS.md` file.
+
+### Best Practices for AGENTS.md
+
+Your rules file should be **optimized for LLM parsing**, not for human documentation. Here's why and how:
+
+#### 1. Keep it Concise (~100-200 lines)
+
+Large files dilute the AI's focus. A focused, concise file produces better reviews.
+
+```markdown
+# ❌ Bad: Verbose explanations
+## TypeScript Guidelines
+When writing TypeScript code, it's important to consider type safety. 
+The `any` type should be avoided because it defeats the purpose of 
+using TypeScript in the first place. Instead, you should always...
+(continues for 50 more lines)
+
+# ✅ Good: Direct and actionable
+## TypeScript
+REJECT if:
+- `any` type used
+- Missing return types on public functions
+- Type assertions without justification
+```
+
+#### 2. Use Clear Action Keywords
+
+Use `REJECT`, `REQUIRE`, `PREFER` to give the AI clear signals:
+
+| Keyword | Meaning | AI Action |
+|---------|---------|-----------|
+| `REJECT if` | Hard rule, must fail | Returns `STATUS: FAILED` |
+| `REQUIRE` | Mandatory pattern | Returns `STATUS: FAILED` if missing |
+| `PREFER` | Soft recommendation | May note but won't fail |
+
+#### 3. Use References for Complex Projects
+
+For large projects or monorepos, use **references** instead of concatenating multiple files:
 
 ```markdown
 # Code Review Rules
 
-## TypeScript
-- Use `const` and `let`, never `var`
-- No `any` types - always use proper typing
-- Prefer interfaces over type aliases for objects
-- Use optional chaining (`?.`) and nullish coalescing (`??`)
+## References
+- UI guidelines: `ui/AGENTS.md`
+- API guidelines: `api/AGENTS.md`
+- Shared rules: `docs/CODE-STYLE.md`
 
-## React
-- Functional components only, no class components
-- No `import * as React` - use named imports
-- Use semantic HTML elements
-- All images need alt text
-- Interactive elements need aria labels
+---
 
-## Styling
-- Use Tailwind CSS utilities
-- No inline styles
-- No hex colors - use design tokens
-
-## Testing
-- All new features need tests
-- Test files must be co-located with source files
-- Use descriptive test names that explain the behavior
+## Critical Rules (ALL files)
+REJECT if:
+- Hardcoded secrets/credentials
+- `console.log` in production code
+- Missing error handling
 ```
+
+**Why references work:** Claude, Gemini, and Codex have built-in tools to read files. When they see a reference like "`ui/AGENTS.md`", they can go read it if they need more context. This keeps your main file focused while allowing deep dives when needed.
+
+> ⚠️ **Note for Ollama users**: Ollama is a pure LLM without file-reading tools. If you use Ollama and need multiple rules files, you'll need to manually consolidate them into one file.
+
+#### 4. Structure for Scanning
+
+Use bullet points, not paragraphs. The AI scans faster:
+
+```markdown
+# ✅ Good: Scannable structure
+
+## TypeScript/React
+REJECT if:
+- `import * as React` → use `import { useState }`
+- Union types `type X = "a" | "b"` → use `const X = {...} as const`
+- `any` type without `// @ts-expect-error` justification
+
+PREFER:
+- Named exports over default exports
+- Composition over inheritance
+```
+
+#### 5. Real-World Example
+
+Here's a battle-tested example from a production monorepo:
+
+```markdown
+# Code Review Rules
+
+## References
+- UI details: `ui/AGENTS.md`
+- SDK details: `sdk/AGENTS.md`
+
+---
+
+## ALL FILES
+REJECT if:
+- Hardcoded secrets/credentials
+- `any` type (TypeScript) or missing type hints (Python)
+- Code duplication (violates DRY)
+- Silent error handling (empty catch blocks)
+
+---
+
+## TypeScript/React
+REJECT if:
+- `import React` → use `import { useState }`
+- `var()` or hex colors in className → use Tailwind
+- `useMemo`/`useCallback` without justification (React 19 Compiler handles this)
+- Missing `"use client"` in client components
+
+PREFER:
+- `cn()` for conditional class merging
+- Semantic HTML over divs
+- Colocated files (component + test + styles)
+
+---
+
+## Python
+REJECT if:
+- Missing type hints on public functions
+- Bare `except:` without specific exception
+- `print()` instead of `logger`
+
+REQUIRE:
+- Docstrings on all public classes/methods
+
+---
+
+## Response Format
+FIRST LINE must be exactly:
+STATUS: PASSED
+or
+STATUS: FAILED
+
+If FAILED, list: `file:line - rule violated - issue`
+```
+
+This file is **89 lines**, uses clear keywords, and has references for component-specific rules.
 
 > 💡 **Pro tip**: Your `AGENTS.md` can also serve as documentation for human reviewers!
 
@@ -988,9 +1096,10 @@ make check
 | Module | Tests | Description |
 |--------|-------|-------------|
 | `cache.sh` | 27 | Hash functions, cache validation, file caching |
-| `providers.sh` | 13 | Provider parsing, validation, info display |
+| `providers.sh` | 37 | Ollama API/CLI, routing, validation, security |
 | CLI commands | 28 | init, install, uninstall, run, config, cache |
-| **Total** | **68** | Full coverage of core functionality |
+| Ollama integration | 12 | Real Ollama tests (local only, requires `qwen2.5:0.5b`) |
+| **Total** | **104** | Full coverage of core functionality |
 
 ### Adding New Tests
 
@@ -1006,7 +1115,15 @@ shellspec spec/unit/my_feature_spec.sh
 
 ## 📋 Changelog
 
-### v2.2.0 (Latest)
+### v2.3.0 (Latest)
+- ✅ Fixed Ollama ANSI escape codes breaking STATUS parsing (#6)
+- ✅ New `execute_ollama_api()` using curl for clean JSON responses
+- ✅ Fallback `execute_ollama_cli()` with ANSI stripping
+- ✅ Security validation for `OLLAMA_HOST`
+- ✅ GitHub Actions CI pipeline (lint, unit tests, integration tests)
+- ✅ Expanded test suite to **104 tests**
+
+### v2.2.0
 - ✅ Added comprehensive test suite with **68 tests**
 - ✅ Unit tests for `cache.sh` and `providers.sh`
 - ✅ Integration tests for all CLI commands
