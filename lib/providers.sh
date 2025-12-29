@@ -178,9 +178,9 @@ execute_opencode() {
   
   # OpenCode CLI accepts prompt via stdin pipe or argument
   if [[ -n "$model" ]]; then
-    echo "$prompt" | opencode run --model "$model" 2>&1
+    printf '%s' "$prompt" | opencode run --model "$model" 2>&1
   else
-    echo "$prompt" | opencode run 2>&1
+    printf '%s' "$prompt" | opencode run 2>&1
   fi
   return "${PIPESTATUS[1]}"
 }

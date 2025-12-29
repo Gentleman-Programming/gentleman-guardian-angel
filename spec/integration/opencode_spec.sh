@@ -12,12 +12,12 @@
 Describe 'OpenCode Integration'
   Include "$LIB_DIR/providers.sh"
 
-  # Check if OpenCode is available
-  opencode_available() {
-    command -v opencode &> /dev/null
+  # Skip tests if OpenCode is not available
+  skip_if_no_opencode() {
+    ! command -v opencode &> /dev/null
   }
 
-  Skip if "OpenCode not available" opencode_available
+  Skip if "OpenCode not available" skip_if_no_opencode
 
   Describe 'validate_provider()'
     It 'validates opencode provider successfully'
