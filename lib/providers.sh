@@ -157,10 +157,11 @@ execute_claude() {
 execute_gemini() {
   local prompt="$1"
   
-  # Gemini CLI accepts prompt via stdin pipe or -p flag
-  # Redirect stderr to stdout to capture any error messages
-  printf '%s' "$prompt" | gemini 2>&1
-  return "${PIPESTATUS[1]}"
+  # Gemini CLI requires prompt as argument or via -p flag
+  # Using -p flag for explicit prompt passing
+  # Note: In CI/non-interactive environments, --yolo may be needed for auto-approval
+  gemini -p "$prompt" 2>&1
+  return $?
 }
 
 execute_codex() {
