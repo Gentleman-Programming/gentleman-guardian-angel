@@ -1134,7 +1134,7 @@ make check
 | CLI commands       | 34      | init, install, uninstall, run, run --ci, config, cache  |
 | Ollama integration | 12      | Real Ollama tests (local only, requires `qwen2.5:0.5b`) |
 | OpenCode           | 8       | OpenCode provider tests                                 |
-| **Total**          | **130** | Full coverage of core functionality                     |
+| **Total**          | **147** | Full coverage of core functionality                     |
 
 ### Adding New Tests
 
@@ -1150,7 +1150,20 @@ shellspec spec/unit/my_feature_spec.sh
 
 ## 📋 Changelog
 
-### v2.5.1 (Latest)
+### v2.6.0 (Latest)
+
+- ✅ **feat**: Commit message validation support (PR #17, based on #11 by @ramarivera)
+  - `gga install --commit-msg` installs commit-msg hook instead of pre-commit
+  - Commit message is automatically included in AI review when available
+  - No config needed - behavior is automatic based on context
+- ✅ **fix**: Read from staging area (`git show :file`) to prevent index corruption (#15, #16)
+  - Fixes race conditions when files are modified after staging
+  - Works correctly with lint-staged, prettier, and other tools
+- ✅ **feat**: Signal handling for graceful cleanup on interruption
+- ✅ `gga uninstall` now handles both pre-commit and commit-msg hooks
+- ✅ **147 tests** (17 new for commit-msg and staging area fixes)
+
+### v2.5.1
 
 - ✅ **fix(gemini)**: Use `-p` flag for non-interactive prompt passing - fixes exit code 41 in CI
 - ✅ **fix(opencode)**: Use positional argument instead of stdin pipe per documentation
