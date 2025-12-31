@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.6.1"
+VERSION="2.7.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -50,6 +50,9 @@ NC='\033[0m' # No Color
 DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
 DEFAULT_STRICT_MODE="true"
+DEFAULT_TIMEOUT="300"  # 5 minutes - generous default for large reviews
+DEFAULT_DEBUG="false"
+DEBUG_FILE=".gga.debug.txt"
 
 # ============================================================================
 # Helper Functions
@@ -101,6 +104,8 @@ print_help() {
   echo "                     Example: *.test.ts,*.spec.ts,*.d.ts"
   echo "  RULES_FILE         File containing review rules (default: AGENTS.md)"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
+  echo "  TIMEOUT            Max seconds to wait for AI response (default: 300)"
+  echo "  DEBUG              Write debug info to .gga.debug.txt (default: false)"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init               # Create sample config"
@@ -113,6 +118,9 @@ print_help() {
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
   echo "  GGA_PROVIDER      Override provider from config"
+  echo "  GGA_TIMEOUT       Override timeout from config (seconds)"
+  echo "  GGA_DEBUG         Enable debug mode (set to 'true')"
+  echo "  GGA_NO_SPINNER    Disable progress spinner (set to any value)"
   echo ""
 }
 
@@ -147,6 +155,8 @@ load_config() {
   EXCLUDE_PATTERNS=""
   RULES_FILE="$DEFAULT_RULES_FILE"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
+  TIMEOUT="$DEFAULT_TIMEOUT"
+  DEBUG="$DEFAULT_DEBUG"
 
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
@@ -165,6 +175,12 @@ load_config() {
   # Environment variable overrides everything
   if [[ -n "$GGA_PROVIDER" ]]; then
     PROVIDER="$GGA_PROVIDER"
+  fi
+  if [[ -n "$GGA_TIMEOUT" ]]; then
+    TIMEOUT="$GGA_TIMEOUT"
+  fi
+  if [[ -n "$GGA_DEBUG" ]]; then
+    DEBUG="$GGA_DEBUG"
   fi
 }
 
@@ -211,6 +227,8 @@ cmd_config() {
   fi
   echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
+  echo -e "  TIMEOUT:           ${CYAN}${TIMEOUT}s${NC}"
+  echo -e "  DEBUG:             ${CYAN}$DEBUG${NC}"
   echo ""
 
   # Check if rules file exists
@@ -274,6 +292,11 @@ RULES_FILE="AGENTS.md"
 # Strict mode: fail if AI response is ambiguous
 # Default: true
 STRICT_MODE="true"
+
+# Timeout in seconds for AI provider response
+# Default: 300 (5 minutes)
+# Increase for large changesets or slow connections
+TIMEOUT="300"
 EOF
 
   log_success "Created config file: $PROJECT_CONFIG"
@@ -727,15 +750,83 @@ cmd_run() {
   fi
   PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
 
-  # Execute review
-  log_info "Sending to $PROVIDER for review..."
+  # Debug mode: write prompt and command to file
+  if [[ "$DEBUG" == "true" ]]; then
+    log_info "Debug mode enabled, writing to $DEBUG_FILE"
+    {
+      echo "============================================================"
+      echo "GGA DEBUG OUTPUT - $(date)"
+      echo "============================================================"
+      echo ""
+      echo "=== CONFIGURATION ==="
+      echo "Provider: $PROVIDER"
+      echo "Timeout: ${TIMEOUT}s"
+      echo "Rules file: $RULES_FILE"
+      echo "Files to review: $(echo "$files_to_review" | wc -l | xargs) files"
+      echo ""
+      echo "=== COMMAND ==="
+      local base_provider="${PROVIDER%%:*}"
+      local model="${PROVIDER#*:}"
+      [[ "$model" == "$PROVIDER" ]] && model=""
+      case "$base_provider" in
+        opencode)
+          if [[ -n "$model" ]]; then
+            echo "opencode run --model \"$model\" \"\$PROMPT\""
+          else
+            echo "opencode run \"\$PROMPT\""
+          fi
+          ;;
+        claude)
+          echo "printf '%s' \"\$PROMPT\" | claude --print"
+          ;;
+        *)
+          echo "$base_provider <prompt>"
+          ;;
+      esac
+      echo ""
+      echo "=== PROMPT (${#PROMPT} characters) ==="
+      echo "$PROMPT"
+      echo ""
+      echo "=== END DEBUG OUTPUT ==="
+    } > "$DEBUG_FILE"
+    log_success "Debug info written to $DEBUG_FILE"
+  fi
+
+  # Execute review with timeout and progress feedback
+  log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
   echo ""
 
-  RESULT=$(execute_provider "$PROVIDER" "$PROMPT")
+  # Temporarily disable set -e to capture exit status properly
+  # (bash 3.2 on macOS can exit on non-zero in command substitution)
+  set +e
+  RESULT=$(execute_provider_with_timeout "$PROVIDER" "$PROMPT" "$TIMEOUT" "$DEBUG")
   EXEC_STATUS=$?
+  set -e
+  
+  [[ -n "${GGA_TRACE:-}" ]] && echo "[TRACE] EXEC_STATUS=$EXEC_STATUS RESULT_LEN=${#RESULT}" >&2
+
+  if [[ $EXEC_STATUS -eq 124 ]]; then
+    log_error "Provider timed out after ${TIMEOUT}s"
+    echo ""
+    echo "The AI provider did not respond in time. This can happen with:"
+    echo "  - Very large changesets (many files)"
+    echo "  - Slow network or API rate limiting"
+    echo ""
+    echo "Try: Increase TIMEOUT in .gga, or review fewer files."
+    echo ""
+    if [[ "$STRICT_MODE" == "true" ]]; then
+      exit 1
+    fi
+    exit 0
+  fi
 
   if [[ $EXEC_STATUS -ne 0 ]]; then
-    log_error "Provider execution failed"
+    log_error "Provider execution failed (exit code: $EXEC_STATUS)"
+    if [[ -n "$RESULT" ]]; then
+      echo ""
+      echo "$RESULT"
+      echo ""
+    fi
     if [[ "$STRICT_MODE" == "true" ]]; then
       exit 1
     fi
