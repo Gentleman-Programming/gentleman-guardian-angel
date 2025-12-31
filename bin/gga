@@ -19,6 +19,24 @@ source "$LIB_DIR/providers.sh"
 # shellcheck source=lib/cache.sh
 source "$LIB_DIR/cache.sh"
 
+# ============================================================================
+# Signal Handling - Graceful cleanup on interruption
+# ============================================================================
+# This ensures we exit cleanly without leaving git index in a bad state
+# when user presses Ctrl+C or the process is terminated
+
+cleanup() {
+  local exit_code=$?
+  # Reset terminal colors in case we were in the middle of output
+  echo -e "\033[0m" 2>/dev/null || true
+  exit $exit_code
+}
+
+# Trap common signals for graceful cleanup
+trap cleanup EXIT
+trap 'exit 130' INT   # Ctrl+C - exit with 128+2
+trap 'exit 143' TERM  # kill - exit with 128+15
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -654,7 +672,12 @@ cmd_run() {
   RULES=$(cat "$RULES_FILE")
 
   # Build prompt only with files to review
-  PROMPT=$(build_prompt "$RULES" "$files_to_review")
+  # In CI mode, read from filesystem; otherwise read from staging area
+  local use_staged="true"
+  if [[ "$ci_mode" == "true" ]]; then
+    use_staged="false"
+  fi
+  PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged")
 
   # Execute review
   log_info "Sending to $PROVIDER for review..."
@@ -851,6 +874,7 @@ get_ci_files() {
 build_prompt() {
   local rules="$1"
   local files="$2"
+  local use_staged="${3:-true}"  # Read from staging area by default
 
   # Start building the prompt
   cat << EOF
@@ -863,12 +887,24 @@ $rules
 === FILES TO REVIEW ===
 EOF
 
-  # Add file contents - using process substitution to avoid subshell
+  # Add file contents
+  # In normal mode (pre-commit): read from staging area with "git show :file"
+  # In CI mode: read from working directory (files are already committed)
   while IFS= read -r file; do
-    if [[ -n "$file" && -f "$file" ]]; then
+    if [[ -n "$file" ]]; then
       echo ""
       echo "--- FILE: $file ---"
-      cat "$file"
+      if [[ "$use_staged" == "true" ]]; then
+        # Read from staging area (index) - this ensures we review exactly what will be committed
+        git show ":$file" 2>/dev/null || {
+          log_warning "Could not read staged content for: $file"
+        }
+      else
+        # CI mode: read from filesystem (file is already committed)
+        if [[ -f "$file" ]]; then
+          cat "$file"
+        fi
+      fi
     fi
   done <<< "$files"
 
