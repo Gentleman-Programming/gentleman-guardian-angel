@@ -746,7 +746,13 @@ cmd_run() {
   echo ""
 
   # Parse result
-  if echo "$RESULT" | grep -q "^STATUS: PASSED"; then
+  # Search for STATUS in the first 15 lines to handle AI responses that include
+  # preamble text (e.g., instruction acknowledgments, markdown formatting)
+  # Accepts: "STATUS: PASSED", "**STATUS: PASSED**", etc.
+  local status_check
+  status_check=$(echo "$RESULT" | head -n 15)
+  
+  if echo "$status_check" | grep -q "STATUS: PASSED"; then
     # Cache the passed files
     if [[ "$cache_initialized" == true ]]; then
       cache_files_passed "$files_to_review"
@@ -754,7 +760,7 @@ cmd_run() {
     log_success "CODE REVIEW PASSED"
     echo ""
     exit 0
-  elif echo "$RESULT" | grep -q "^STATUS: FAILED"; then
+  elif echo "$status_check" | grep -q "STATUS: FAILED"; then
     log_error "CODE REVIEW FAILED"
     echo ""
     echo "Fix the violations listed above before committing."
@@ -765,7 +771,7 @@ cmd_run() {
     if [[ "$STRICT_MODE" == "true" ]]; then
       log_error "STRICT MODE: Failing due to ambiguous response"
       echo ""
-      echo "The AI response must start with 'STATUS: PASSED' or 'STATUS: FAILED'"
+      echo "Expected 'STATUS: PASSED' or 'STATUS: FAILED' in the first 15 lines"
       echo "Set STRICT_MODE=false in config to allow ambiguous responses"
       echo ""
       exit 1
@@ -974,7 +980,7 @@ EOF
 
 === END FILES ===
 
-**IMPORTANT: Your response MUST start with exactly one of these lines:**
+**IMPORTANT: Your response MUST include one of these lines near the beginning:**
 STATUS: PASSED
 STATUS: FAILED
 
@@ -986,7 +992,7 @@ STATUS: FAILED
 
 **If PASSED:** Confirm all files comply with the coding standards.
 
-**Start your response now with STATUS:**
+**Begin with STATUS:**
 EOF
 }
 
