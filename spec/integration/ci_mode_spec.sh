@@ -82,6 +82,42 @@ Describe 'CI mode (--ci)'
     End
   End
 
+  Describe 'GGA_CI_SOURCE_COMMIT handling'
+    It 'includes older changes when GGA_CI_SOURCE_COMMIT is set to include two commits'
+      # Commit A (older): add old.ts
+      echo "old" > old.ts
+      git add old.ts
+      git commit -m "add old file" --quiet
+
+      # Commit B (newer): add new.ts
+      echo "new" > new.ts
+      git add new.ts
+      git commit -m "add new file" --quiet
+
+      # Run with GGA_CI_SOURCE_COMMIT set to include two commits back
+      When call env GGA_CI_SOURCE_COMMIT=HEAD~2 "$GGA_BIN" run --ci
+      The output should include "old.ts"
+      The output should include "new.ts"
+    End
+
+    It 'only reviews last commit when GGA_CI_SOURCE_COMMIT is not set'
+      # Commit A (older): add older.ts
+      echo "older" > older.ts
+      git add older.ts
+      git commit -m "add older file" --quiet
+
+      # Commit B (newer): add newer.ts
+      echo "newer" > newer.ts
+      git add newer.ts
+      git commit -m "add newer file" --quiet
+
+      # Run without GGA_CI_SOURCE_COMMIT - should only include the newest commit
+      When call "$GGA_BIN" run --ci
+      The output should include "newer.ts"
+      The output should not include "older.ts"
+    End
+  End
+
   Describe 'excludes deleted files'
     It 'does not include files that were deleted'
       # Create and commit a file
