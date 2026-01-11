@@ -157,11 +157,22 @@ execute_claude() {
 execute_gemini() {
   local prompt="$1"
   
-  # Gemini CLI requires prompt as argument or via -p flag
-  # Using -p flag for explicit prompt passing
-  # Note: In CI/non-interactive environments, --yolo may be needed for auto-approval
+  if ! is_gemini_authenticated; then
+    echo -e "${RED}❌ Gemini CLI is not authenticated${NC}" >&2
+    echo ""
+    echo "Please log in to Gemini CLI first:"
+    echo "  gemini login"
+    echo ""
+    echo "Or visit: https://gemini.google.com"
+    return 1
+  fi
+  
   gemini -p "$prompt" 2>&1
   return $?
+}
+
+is_gemini_authenticated() {
+  gemini whoami &>/dev/null
 }
 
 execute_codex() {
