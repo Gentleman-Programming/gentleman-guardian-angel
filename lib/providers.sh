@@ -9,6 +9,7 @@
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
+# - lmstudio[:model]: LM Studio (optional model)
 # ============================================================================
 
 # Colors (in case sourced independently)
@@ -91,6 +92,19 @@ validate_provider() {
         return 1
       fi
       ;;
+    lmstudio)
+      # Check if curl is available for API calls
+      if ! command -v curl &> /dev/null; then
+        echo -e "${RED}❌ curl not found${NC}"
+        echo ""
+        echo "Install curl:"
+        echo "  # Most systems have it pre-installed"
+        echo "  # Ubuntu/Debian: sudo apt-get install curl"
+        echo "  # macOS: brew install curl"
+        echo ""
+        return 1
+      fi
+      ;;
     *)
       echo -e "${RED}❌ Unknown provider: $provider${NC}"
       echo ""
@@ -100,6 +114,7 @@ validate_provider() {
       echo "  - codex"
       echo "  - opencode"
       echo "  - ollama:<model>"
+      echo "  - lmstudio[:model]"
       echo ""
       return 1
       ;;
@@ -137,6 +152,13 @@ execute_provider() {
     ollama)
       local model="${provider#*:}"
       execute_ollama "$model" "$prompt"
+      ;;
+    lmstudio)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_lmstudio "$model" "$prompt"
       ;;
   esac
 }
@@ -297,6 +319,150 @@ execute_ollama_cli() {
   return "${PIPESTATUS[0]}"
 }
 
+execute_lmstudio() {
+  local model="$1"
+  local prompt="$2"
+  local host="${LMSTUDIO_HOST:-http://localhost:1234/v1}"
+
+  # Validate LMSTUDIO_HOST format
+  if ! validate_lmstudio_host "$host"; then
+    echo "Error: Invalid LMSTUDIO_HOST format. Expected: http(s)://hostname(:port)(/v1)" >&2
+    return 1
+  fi
+
+  # Use python3 for clean JSON parsing if available, otherwise basic response extraction
+  if command -v python3 &> /dev/null; then
+    execute_lmstudio_api "$model" "$prompt" "$host"
+    return $?
+  else
+    execute_lmstudio_api_fallback "$model" "$prompt" "$host"
+    return $?
+  fi
+}
+
+validate_lmstudio_host() {
+  local host="$1"
+
+  # Regex: http or https, followed by hostname (alphanumeric, dots, hyphens),
+  # optional port, optional /v1 path
+  if [[ "$host" =~ ^https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/v1)?$ ]]; then
+    return 0
+  fi
+  return 1
+}
+
+execute_lmstudio_api() {
+  local model="$1"
+  local prompt="$2"
+  local host="$3"
+
+  # Default model if not specified
+  if [[ -z "$model" ]]; then
+    model="local-model"
+  fi
+
+  # Build JSON payload
+  local json_payload
+  if ! json_payload=$(python3 -c "
+import sys, json
+payload = json.dumps({
+    'model': '$model',
+    'messages': [{'role': 'user', 'content': sys.stdin.read()}],
+    'temperature': 0.7,
+    'stream': False
+})
+print(payload)
+" <<< "$prompt" 2>&1); then
+    echo "Error: Failed to build JSON payload" >&2
+    echo "$json_payload" >&2
+    return 1
+  fi
+
+  # Ensure host ends with /v1
+  if [[ ! "$host" =~ /v1$ ]]; then
+    host="${host}/v1"
+  fi
+
+  local endpoint="${host}/chat/completions"
+
+  # Call LM Studio API
+  local api_response
+  api_response=$(curl -s --fail-with-body \
+    -H "Content-Type: application/json" \
+    -d "$json_payload" \
+    "$endpoint" 2>&1)
+
+  local curl_status=$?
+  if [[ $curl_status -ne 0 ]]; then
+    echo "Error: Failed to connect to LM Studio at $host" >&2
+    echo "$api_response" >&2
+    return 1
+  fi
+
+  # Extract response
+  printf '%s' "$api_response" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    response = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+    if response:
+        print(response)
+    else:
+        error = data.get('error', {}).get('message', 'Unknown error from LM Studio')
+        print(f'Error: {error}', file=sys.stderr)
+        sys.exit(1)
+except json.JSONDecodeError as e:
+    print(f'Error: Invalid JSON response from LM Studio: {e}', file=sys.stderr)
+    sys.exit(1)
+except (KeyError, IndexError, TypeError) as e:
+    print(f'Error: Unexpected response format from LM Studio', file=sys.stderr)
+    sys.exit(1)
+"
+  return $?
+}
+
+execute_lmstudio_api_fallback() {
+  local model="$1"
+  local prompt="$2"
+  local host="$3"
+
+  # Default model if not specified
+  if [[ -z "$model" ]]; then
+    model="local-model"
+  fi
+
+  # Build JSON payload manually (less safe, but works without python3)
+  local json_payload
+  json_payload="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\""
+  json_payload+="$(printf '%s' "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  json_payload+="\"}],\"temperature\":0.7,\"stream\":false}"
+
+  # Ensure host ends with /v1
+  if [[ ! "$host" =~ /v1$ ]]; then
+    host="${host}/v1"
+  fi
+
+  local endpoint="${host}/chat/completions"
+
+  # Call LM Studio API
+  local api_response
+  api_response=$(curl -s --fail-with-body \
+    -H "Content-Type: application/json" \
+    -d "$json_payload" \
+    "$endpoint" 2>&1)
+
+  local curl_status=$?
+  if [[ $curl_status -ne 0 ]]; then
+    echo "Error: Failed to connect to LM Studio at $host" >&2
+    echo "$api_response" >&2
+    return 1
+  fi
+
+  # Extract response using sed/grep
+  printf '%s' "$api_response" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g; s/\\"/"/g'
+  return $?
+}
+
 # ============================================================================
 # Provider Info
 # ============================================================================
@@ -326,6 +492,14 @@ get_provider_info() {
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
+      ;;
+    lmstudio)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        echo "LM Studio"
+      else
+        echo "LM Studio (model: $model)"
+      fi
       ;;
     *)
       echo "Unknown provider"
