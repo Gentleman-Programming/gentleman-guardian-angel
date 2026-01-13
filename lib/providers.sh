@@ -16,6 +16,9 @@
 RED='\033[0;31m'
 NC='\033[0m'
 
+# Constant Variables
+GITHUB_MODELS_API_ENDPOINT='https://models.inference.ai.azure.com/chat/completions'
+
 # ============================================================================
 # Provider Validation
 # ============================================================================
@@ -234,10 +237,7 @@ execute_github_models() {
                   }')
 
   local response
-  local curl_error_file
-  curl_error_file="$(mktemp)"
-
-  if ! response=$(curl -sS https://models.inference.ai.azure.com/chat/completions \
+  if ! response=$(curl -sS $GITHUB_MODELS_API_ENDPOINT \
           -H "Authorization: Bearer $token" \
           -H "Content-Type: application/json" \
           -d "$json_payload" 2> "$curl_error_file"); then
