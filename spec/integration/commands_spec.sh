@@ -55,6 +55,12 @@ Describe 'gga commands'
       The output should include "init"
       The output should include "cache"
     End
+
+    It 'shows --ci option in help'
+      When call gga help
+      The output should include "--ci"
+      The output should include "CI mode"
+    End
   End
 
   Describe 'gga init'

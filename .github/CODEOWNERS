@@ -1,0 +1,16 @@
+# ============================================================================
+# CODEOWNERS - Gentleman Guardian Angel
+# ============================================================================
+# This file defines who must approve pull requests before they can be merged.
+# All changes require approval from the repository owner.
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# ============================================================================
+
+# Default owner for everything in the repo
+* @alanbuscaglia
+
+# Critical files - extra attention
+/.github/ @alanbuscaglia
+/bin/gga @alanbuscaglia
+/lib/ @alanbuscaglia

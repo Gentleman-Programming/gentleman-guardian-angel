@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # Lint - Fast check for syntax errors
+  # ============================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: |
+          # -x: follow source statements
+          # -e SC1090,SC1091: ignore "can't follow non-constant source" (dynamic paths)
+          # -e SC2162: ignore "read without -r" (we handle backslashes intentionally)
+          # -e SC2129: ignore "use { } >> file" style suggestion
+          shellcheck -x -e SC1090,SC1091,SC2162,SC2129 bin/gga lib/*.sh
+
+  # ============================================================================
+  # Unit Tests - Fast tests with mocks (no external dependencies)
+  # ============================================================================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellSpec
+        run: |
+          curl -fsSL https://git.io/shellspec | sh -s -- --yes
+          echo "$HOME/.local/lib/shellspec" >> $GITHUB_PATH
+
+      - name: Run unit tests
+        run: shellspec spec/unit
+
+  # ============================================================================
+  # Integration Tests - Tests that don't require external services
+  # Note: ollama_spec.sh is skipped (requires real Ollama instance)
+  # ============================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellSpec
+        run: |
+          curl -fsSL https://git.io/shellspec | sh -s -- --yes
+          echo "$HOME/.local/lib/shellspec" >> $GITHUB_PATH
+
+      - name: Run integration tests (excluding Ollama)
+        run: shellspec spec/integration/commands_spec.sh
+
+  # ============================================================================
+  # All Tests Summary - Required for branch protection
+  # ============================================================================
+  tests-passed:
+    name: All Tests Passed
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests, integration-tests]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.unit-tests.result }}" != "success" ]] || \
+             [[ "${{ needs.integration-tests.result }}" != "success" ]]; then
+            echo "❌ Some tests failed!"
+            echo "  Lint: ${{ needs.lint.result }}"
+            echo "  Unit Tests: ${{ needs.unit-tests.result }}"
+            echo "  Integration Tests: ${{ needs.integration-tests.result }}"
+            exit 1
+          fi
+          echo "✅ All tests passed!"

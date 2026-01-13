@@ -1,15 +1,27 @@
 # shellcheck shell=bash
 
 # Spec helper - Common setup for all tests
+# Compatible with ShellSpec 0.28.0+
 
-# Set strict mode
-set -eu
+# Get the project root directory (set in spec_helper_configure)
+PROJECT_ROOT=""
+LIB_DIR=""
 
-# Get the project root directory
-PROJECT_ROOT="$(cd "$(dirname "$SHELLSPEC_SPECDIR")" && pwd)"
-
-# Source the library files
-export LIB_DIR="$PROJECT_ROOT/lib"
+# Called when spec_helper is loaded
+spec_helper_configure() {
+  # Set strict mode
+  set -eu
+  
+  # Get the project root directory
+  PROJECT_ROOT="$(cd "$(dirname "$SHELLSPEC_SPECDIR")" && pwd)"
+  
+  # Source the library files
+  LIB_DIR="$PROJECT_ROOT/lib"
+  
+  # Export for use in tests
+  export PROJECT_ROOT
+  export LIB_DIR
+}
 
 # Create a temporary directory for tests
 setup_temp_dir() {
@@ -71,13 +83,3 @@ mock_provider_fail() {
   echo "Violations found:"
   echo "- test.ts:1 - Rule violated"
 }
-
-# Export functions
-export -f setup_temp_dir
-export -f cleanup_temp_dir
-export -f init_git_repo
-export -f create_and_stage_file
-export -f create_test_config
-export -f create_test_rules
-export -f mock_provider_pass
-export -f mock_provider_fail

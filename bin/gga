@@ -9,13 +9,33 @@
 
 set -e
 
-VERSION="2.2.0"
+VERSION="2.6.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 # Source library functions
+# shellcheck source=lib/providers.sh
 source "$LIB_DIR/providers.sh"
+# shellcheck source=lib/cache.sh
 source "$LIB_DIR/cache.sh"
+
+# ============================================================================
+# Signal Handling - Graceful cleanup on interruption
+# ============================================================================
+# This ensures we exit cleanly without leaving git index in a bad state
+# when user presses Ctrl+C or the process is terminated
+
+cleanup() {
+  local exit_code=$?
+  # Reset terminal colors in case we were in the middle of output
+  echo -e "\033[0m" 2>/dev/null || true
+  exit $exit_code
+}
+
+# Trap common signals for graceful cleanup
+trap cleanup EXIT
+trap 'exit 130' INT   # Ctrl+C - exit with 128+2
+trap 'exit 143' TERM  # kill - exit with 128+15
 
 # Colors
 RED='\033[0;31m'
@@ -51,8 +71,10 @@ print_help() {
   echo ""
   echo -e "${BOLD}COMMANDS:${NC}"
   echo "  run [--no-cache]  Run code review on staged files"
-  echo "  install           Install git pre-commit hook in current repo"
-  echo "  uninstall         Remove git pre-commit hook from current repo"
+  echo "  install           Install git pre-commit hook (default)"
+  echo "  install --commit-msg"
+  echo "                    Install git commit-msg hook (for commit message validation)"
+  echo "  uninstall         Remove git hooks from current repo"
   echo "  config            Show current configuration"
   echo "  init              Create a sample .gga config file"
   echo "  cache clear       Clear cache for current project"
@@ -63,6 +85,8 @@ print_help() {
   echo ""
   echo -e "${BOLD}RUN OPTIONS:${NC}"
   echo "  --no-cache        Force review all files, ignoring cache"
+  echo "  --ci              CI mode: review files changed in last commit (HEAD~1..HEAD)"
+  echo "                    Use this in GitLab CI, GitHub Actions, etc."
   echo ""
   echo -e "${BOLD}CONFIGURATION:${NC}"
   echo "  Create a ${CYAN}.gga${NC} file in your project root or"
@@ -70,7 +94,7 @@ print_help() {
   echo ""
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
-  echo "                     Values: claude, gemini, codex, ollama:<model>"
+  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>"
   echo "  FILE_PATTERNS      File patterns to review (default: *)"
   echo "                     Example: *.ts,*.tsx,*.js,*.jsx"
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
@@ -79,11 +103,13 @@ print_help() {
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
-  echo "  gga init          # Create sample config"
-  echo "  gga install       # Install git hook"
-  echo "  gga run           # Run review (with cache)"
-  echo "  gga run --no-cache # Run review (ignore cache)"
-  echo "  gga cache status  # Show cache info"
+  echo "  gga init               # Create sample config"
+  echo "  gga install            # Install pre-commit hook (default)"
+  echo "  gga install --commit-msg  # Install commit-msg hook"
+  echo "  gga run                # Run review (with cache)"
+  echo "  gga run --no-cache     # Run review (ignore cache)"
+  echo "  gga run --ci           # Run review in CI (last commit)"
+  echo "  gga cache status       # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
   echo "  GGA_PROVIDER      Override provider from config"
@@ -125,12 +151,14 @@ load_config() {
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
   if [[ -f "$GLOBAL_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$GLOBAL_CONFIG"
   fi
 
   # Load project config (overrides global)
   PROJECT_CONFIG=".gga"
   if [[ -f "$PROJECT_CONFIG" ]]; then
+    # shellcheck source=/dev/null
     source "$PROJECT_CONFIG"
   fi
 
@@ -150,18 +178,18 @@ cmd_config() {
 
   echo -e "${BOLD}Current Configuration:${NC}"
   echo ""
-  
+
   # Check config sources
   GLOBAL_CONFIG="$HOME/.config/gga/config"
   PROJECT_CONFIG=".gga"
-  
+
   echo -e "${BOLD}Config Files:${NC}"
   if [[ -f "$GLOBAL_CONFIG" ]]; then
     echo -e "  Global:  ${GREEN}$GLOBAL_CONFIG${NC}"
   else
     echo -e "  Global:  ${YELLOW}Not found${NC}"
   fi
-  
+
   if [[ -f "$PROJECT_CONFIG" ]]; then
     echo -e "  Project: ${GREEN}$PROJECT_CONFIG${NC}"
   else
@@ -196,12 +224,12 @@ cmd_config() {
 
 cmd_init() {
   print_banner
-  
+
   PROJECT_CONFIG=".gga"
-  
+
   if [[ -f "$PROJECT_CONFIG" ]]; then
     log_warning "Config file already exists: $PROJECT_CONFIG"
-    read -p "Overwrite? (y/N): " confirm
+    read -rp "Overwrite? (y/N): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
       echo "Aborted."
       exit 0
@@ -213,13 +241,15 @@ cmd_init() {
 # https://github.com/your-org/gga
 
 # AI Provider (required)
-# Options: claude, gemini, codex, ollama:<model>
+# Options: claude, gemini, codex, opencode, ollama:<model>
 # Examples:
 #   PROVIDER="claude"
 #   PROVIDER="gemini"
 #   PROVIDER="codex"
 #   PROVIDER="github:gpt-4.1"
 #   PROVIDER="github:phi-4"
+#   PROVIDER="opencode"
+#   PROVIDER="opencode:anthropic/claude-opus-4-5"
 #   PROVIDER="ollama:llama3.2"
 #   PROVIDER="ollama:codellama"
 PROVIDER="claude"
@@ -257,6 +287,10 @@ EOF
   echo ""
 }
 
+# Markers for GGA hook section (used for clean install/uninstall)
+GGA_MARKER_START="# ======== GGA START ========"
+GGA_MARKER_END="# ======== GGA END ========"
+
 cmd_install() {
   print_banner
 
@@ -266,8 +300,36 @@ cmd_install() {
     exit 1
   fi
 
-  GIT_ROOT=$(git rev-parse --show-toplevel)
-  HOOK_PATH="$GIT_ROOT/.git/hooks/pre-commit"
+  # Parse arguments to determine hook type
+  local hook_type="pre-commit"  # default
+
+  for arg in "$@"; do
+    case "$arg" in
+      --commit-msg)
+        hook_type="commit-msg"
+        ;;
+    esac
+  done
+
+  # Use --git-path hooks to get the correct hooks directory
+  # This works correctly for both regular repos and worktrees:
+  # - Regular repo: returns .git/hooks
+  # - Worktree: returns the main repo's .git/hooks (where git actually looks)
+  HOOKS_DIR=$(git rev-parse --git-path hooks)
+  HOOK_PATH="$HOOKS_DIR/$hook_type"
+
+  # Ensure hooks directory exists (may not exist in fresh repos)
+  mkdir -p "$HOOKS_DIR"
+
+  # Determine the gga run command based on hook type
+  # commit-msg hook receives the commit message file as $1, which GGA uses automatically
+  local gga_run_cmd
+  if [[ "$hook_type" == "commit-msg" ]]; then
+    # shellcheck disable=SC2016 # We intentionally use single quotes - $1 expands when hook runs, not now
+    gga_run_cmd='gga run "$1" || exit 1'
+  else
+    gga_run_cmd='gga run || exit 1'
+  fi
 
   # Check if hook already exists
   if [[ -f "$HOOK_PATH" ]]; then
@@ -285,35 +347,67 @@ cmd_install() {
       exit 0
     fi
 
-    if grep -q "gga" "$HOOK_PATH"; then
-      log_warning "Gentleman Guardian Angel hook already installed"
-      exit 0
-    else
-      log_warning "A pre-commit hook already exists"
-      read -p "Append Gentleman Guardian Angel to existing hook? (y/N): " confirm
-      if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        echo "Aborted."
-        exit 0
-      fi
-      # Append to existing hook
-      echo "" >> "$HOOK_PATH"
-      echo "# Gentleman Guardian Angel" >> "$HOOK_PATH"
-      echo 'gga run || exit 1' >> "$HOOK_PATH"
-      log_success "Appended Gentleman Guardian Angel to existing hook"
+    # Check if GGA is already installed (using markers)
+    if grep -q "$GGA_MARKER_START" "$HOOK_PATH"; then
+      log_warning "Gentleman Guardian Angel hook already installed in $hook_type"
       exit 0
     fi
+
+    # Existing hook without GGA - insert with markers
+    log_info "Existing $hook_type hook found, adding GGA..."
+
+    # Build the GGA block
+    local gga_block
+    gga_block=$(printf '\n%s\n%s\n%s\n%s' \
+      "$GGA_MARKER_START" \
+      "# Gentleman Guardian Angel - Code Review" \
+      "$gga_run_cmd" \
+      "$GGA_MARKER_END")
+
+    # Check if hook ends with 'exit 0' or 'exit' (with optional whitespace)
+    # If so, insert GGA block before the final exit to ensure it runs
+    if grep -Eq '^[[:space:]]*exit[[:space:]]*[0-9]*[[:space:]]*$' "$HOOK_PATH"; then
+      # Find the last exit line and insert before it
+      local last_exit_line
+      last_exit_line=$(grep -n '^[[:space:]]*exit[[:space:]]*[0-9]*[[:space:]]*$' "$HOOK_PATH" | tail -1 | cut -d: -f1)
+
+      if [[ -n "$last_exit_line" ]]; then
+        # Insert GGA block before the last exit line
+        local temp_file
+        temp_file=$(mktemp)
+        {
+          head -n $((last_exit_line - 1)) "$HOOK_PATH"
+          echo "$gga_block"
+          echo ""
+          tail -n +"$last_exit_line" "$HOOK_PATH"
+        } > "$temp_file"
+        mv "$temp_file" "$HOOK_PATH"
+        chmod +x "$HOOK_PATH"
+        log_success "Inserted Gentleman Guardian Angel before exit in $hook_type hook: $HOOK_PATH"
+        echo ""
+        exit 0
+      fi
+    fi
+
+    # No exit statement found, append to end
+    echo "$gga_block" >> "$HOOK_PATH"
+    log_success "Appended Gentleman Guardian Angel to existing $hook_type hook: $HOOK_PATH"
+    echo ""
+    exit 0
   fi
 
-  # Create new hook
-  cat > "$HOOK_PATH" << 'EOF'
+  # Create new hook with markers
+  cat > "$HOOK_PATH" << EOF
 #!/usr/bin/env bash
-# Git pre-commit hook - Gentleman Guardian Angel
 
-gga run || exit 1
+$GGA_MARKER_START
+# Gentleman Guardian Angel - Code Review
+$gga_run_cmd
+$GGA_MARKER_END
 EOF
 
   chmod +x "$HOOK_PATH"
-  log_success "Installed pre-commit hook: $HOOK_PATH"
+  log_success "Installed $hook_type hook: $HOOK_PATH"
   echo ""
 }
 
@@ -326,39 +420,78 @@ cmd_uninstall() {
     exit 1
   fi
 
-  GIT_ROOT=$(git rev-parse --show-toplevel)
-  HOOK_PATH="$GIT_ROOT/.git/hooks/pre-commit"
+  # Use --git-path hooks to get the correct hooks directory
+  # This works correctly for both regular repos and worktrees
+  HOOKS_DIR=$(git rev-parse --git-path hooks)
 
-  if [[ ! -f "$HOOK_PATH" ]]; then
-    log_warning "No pre-commit hook found"
-    exit 0
+  local found_any=false
+
+  # Check both hook types
+  for hook_type in "pre-commit" "commit-msg"; do
+    local hook_path="$HOOKS_DIR/$hook_type"
+
+    if [[ -f "$hook_path" ]] && grep -q "gga" "$hook_path"; then
+      found_any=true
+      uninstall_from_hook "$hook_path" "$hook_type"
+    fi
+  done
+
+  if [[ "$found_any" == false ]]; then
+    log_warning "Gentleman Guardian Angel hook not found"
   fi
 
-  if ! grep -q "gga" "$HOOK_PATH"; then
-    log_warning "Gentleman Guardian Angel hook not found in pre-commit"
-    exit 0
-  fi
-
-  # Check if it's our hook only or mixed
-  if grep -q "^gga run" "$HOOK_PATH" && [[ $(wc -l < "$HOOK_PATH") -le 5 ]]; then
-    # It's only our hook, remove the file
-    rm "$HOOK_PATH"
-    log_success "Removed pre-commit hook"
-  else
-    # Mixed hook, just remove our lines
-    sed -i.bak '/# Gentleman Guardian Angel/d' "$HOOK_PATH"
-    sed -i.bak '/gga run/d' "$HOOK_PATH"
-    rm -f "$HOOK_PATH.bak"
-    log_success "Removed Gentleman Guardian Angel from pre-commit hook"
-  fi
   echo ""
+}
+
+# Helper function to uninstall GGA from a specific hook file
+uninstall_from_hook() {
+  local hook_path="$1"
+  local hook_name="$2"
+
+  # Check for GGA using markers first (new format)
+  if grep -q "$GGA_MARKER_START" "$hook_path"; then
+    # Remove content between markers (inclusive)
+    if [[ "$(uname)" == "Darwin" ]]; then
+      sed -i '' "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$hook_path"
+    else
+      sed -i "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$hook_path"
+    fi
+
+    # Check if file is now empty or only has shebang/whitespace
+    local remaining_content
+    remaining_content=$(grep -Ecv '^#!|^[[:space:]]*$' "$hook_path" || true)
+    if [[ "$remaining_content" -eq 0 ]]; then
+      rm "$hook_path"
+      log_success "Removed $hook_name hook (was GGA-only)"
+    else
+      log_success "Removed Gentleman Guardian Angel from $hook_name hook"
+    fi
+    return
+  fi
+
+  # Legacy format: check if it's our hook only or mixed
+  if grep -q "^gga run" "$hook_path" && [[ $(wc -l < "$hook_path") -le 6 ]]; then
+    # It's only our hook, remove the file
+    rm "$hook_path"
+    log_success "Removed $hook_name hook"
+  else
+    # Mixed hook, just remove our lines (legacy format)
+    if [[ "$(uname)" == "Darwin" ]]; then
+      sed -i '' '/# Gentleman Guardian Angel/d' "$hook_path"
+      sed -i '' '/gga run/d' "$hook_path"
+    else
+      sed -i '/# Gentleman Guardian Angel/d' "$hook_path"
+      sed -i '/gga run/d' "$hook_path"
+    fi
+    log_success "Removed Gentleman Guardian Angel from $hook_name hook"
+  fi
 }
 
 cmd_cache() {
   local subcommand="${1:-status}"
-  
+
   print_banner
-  
+
   case "$subcommand" in
     clear)
       clear_project_cache
@@ -372,34 +505,34 @@ cmd_cache() {
       ;;
     status)
       load_config
-      
+
       local cache_dir
       cache_dir=$(get_project_cache_dir)
-      
+
       echo -e "${BOLD}Cache Status:${NC}"
       echo ""
-      
+
       if [[ -z "$cache_dir" ]]; then
         echo -e "  Project cache: ${YELLOW}Not initialized (not in a git repo?)${NC}"
       elif [[ ! -d "$cache_dir" ]]; then
         echo -e "  Project cache: ${YELLOW}Not initialized${NC}"
       else
         echo -e "  Cache directory: ${CYAN}$cache_dir${NC}"
-        
+
         # Check if cache is valid
         if is_cache_valid "$RULES_FILE" ".gga"; then
           echo -e "  Cache validity: ${GREEN}Valid${NC}"
         else
           echo -e "  Cache validity: ${YELLOW}Invalid (rules or config changed)${NC}"
         fi
-        
+
         # Count cached files
         local cached_count=0
         if [[ -d "$cache_dir/files" ]]; then
           cached_count=$(find "$cache_dir/files" -type f 2>/dev/null | wc -l | xargs)
         fi
         echo -e "  Cached files: ${CYAN}$cached_count${NC}"
-        
+
         # Show cache size
         if command -v du &> /dev/null; then
           local cache_size
@@ -424,16 +557,28 @@ cmd_cache() {
 
 cmd_run() {
   local use_cache=true
-  
+  local ci_mode=false
+  local commit_msg_file=""
+
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
       --no-cache)
         use_cache=false
         ;;
+      --ci)
+        ci_mode=true
+        use_cache=false  # Cache doesn't make sense in CI
+        ;;
+      *)
+        # Non-flag argument is the commit message file (from commit-msg hook)
+        if [[ -f "$arg" ]]; then
+          commit_msg_file="$arg"
+        fi
+        ;;
     esac
   done
-  
+
   print_banner
   load_config
 
@@ -479,56 +624,72 @@ cmd_run() {
   if [[ -n "$EXCLUDE_PATTERNS" ]]; then
     log_info "Exclude patterns: $EXCLUDE_PATTERNS"
   fi
-  
+
+  # Mode status
+  if [[ "$ci_mode" == true ]]; then
+    log_info "Mode: ${CYAN}CI (reviewing last commit)${NC}"
+  fi
+
   # Cache status
   if [[ "$use_cache" == true ]]; then
     log_info "Cache: ${GREEN}enabled${NC}"
+  elif [[ "$ci_mode" == true ]]; then
+    log_info "Cache: ${YELLOW}disabled (CI mode)${NC}"
   else
     log_info "Cache: ${YELLOW}disabled (--no-cache)${NC}"
   fi
   echo ""
 
-  # Get staged files
-  STAGED_FILES=$(get_staged_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
-
-  if [[ -z "$STAGED_FILES" ]]; then
-    log_warning "No matching files staged for commit"
-    echo ""
-    exit 0
+  # Get files to review based on mode
+  local FILES_TO_CHECK
+  if [[ "$ci_mode" == true ]]; then
+    FILES_TO_CHECK=$(get_ci_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
+    if [[ -z "$FILES_TO_CHECK" ]]; then
+      log_warning "No matching files changed in last commit"
+      echo ""
+      exit 0
+    fi
+  else
+    FILES_TO_CHECK=$(get_staged_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
+    if [[ -z "$FILES_TO_CHECK" ]]; then
+      log_warning "No matching files staged for commit"
+      echo ""
+      exit 0
+    fi
   fi
 
   # Initialize/validate cache
-  local files_to_review="$STAGED_FILES"
+  local files_to_review="$FILES_TO_CHECK"
   local cache_initialized=false
-  
+
   if [[ "$use_cache" == true ]]; then
     # Check if cache is valid, if not invalidate it
     if ! is_cache_valid "$RULES_FILE" ".gga"; then
       log_info "Cache invalidated (rules or config changed)"
       invalidate_cache
     fi
-    
+
     # Initialize cache
     init_cache "$RULES_FILE" ".gga" > /dev/null
     cache_initialized=true
-    
+
     # Filter out cached files
-    files_to_review=$(filter_uncached_files "$STAGED_FILES")
-    
+    files_to_review=$(filter_uncached_files "$FILES_TO_CHECK")
+
     # Calculate cached files
     local total_count=0
     local uncached_count=0
-    
+
     while IFS= read -r file; do
       [[ -n "$file" ]] && total_count=$((total_count + 1))
-    done <<< "$STAGED_FILES"
-    
+    done <<< "$FILES_TO_CHECK"
+
     while IFS= read -r file; do
       [[ -n "$file" ]] && uncached_count=$((uncached_count + 1))
     done <<< "$files_to_review"
-    
+
     local cached_count=$((total_count - uncached_count))
-    
+
     if [[ $cached_count -gt 0 ]]; then
       log_success "$cached_count file(s) passed from cache"
     fi
@@ -542,7 +703,7 @@ cmd_run() {
     echo ""
     exit 0
   fi
-  
+
   echo "$files_to_review" | while IFS= read -r file; do
     if [[ -n "$file" ]]; then
       echo "  - $file"
@@ -553,8 +714,20 @@ cmd_run() {
   # Read rules
   RULES=$(cat "$RULES_FILE")
 
+  # Read commit message if provided (from commit-msg hook)
+  local commit_msg=""
+  if [[ -n "$commit_msg_file" && -f "$commit_msg_file" ]]; then
+    commit_msg=$(cat "$commit_msg_file")
+    log_info "Including commit message in review"
+  fi
+
   # Build prompt only with files to review
-  PROMPT=$(build_prompt "$RULES" "$files_to_review")
+  # In CI mode, read from filesystem; otherwise read from staging area
+  local use_staged="true"
+  if [[ "$ci_mode" == "true" ]]; then
+    use_staged="false"
+  fi
+  PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
 
   # Execute review
   log_info "Sending to $PROVIDER for review..."
@@ -575,7 +748,13 @@ cmd_run() {
   echo ""
 
   # Parse result
-  if echo "$RESULT" | grep -q "^STATUS: PASSED"; then
+  # Search for STATUS in the first 15 lines to handle AI responses that include
+  # preamble text (e.g., instruction acknowledgments, markdown formatting)
+  # Accepts: "STATUS: PASSED", "**STATUS: PASSED**", etc.
+  local status_check
+  status_check=$(echo "$RESULT" | head -n 15)
+
+  if echo "$status_check" | grep -q "STATUS: PASSED"; then
     # Cache the passed files
     if [[ "$cache_initialized" == true ]]; then
       cache_files_passed "$files_to_review"
@@ -583,7 +762,7 @@ cmd_run() {
     log_success "CODE REVIEW PASSED"
     echo ""
     exit 0
-  elif echo "$RESULT" | grep -q "^STATUS: FAILED"; then
+  elif echo "$status_check" | grep -q "STATUS: FAILED"; then
     log_error "CODE REVIEW FAILED"
     echo ""
     echo "Fix the violations listed above before committing."
@@ -594,7 +773,7 @@ cmd_run() {
     if [[ "$STRICT_MODE" == "true" ]]; then
       log_error "STRICT MODE: Failing due to ambiguous response"
       echo ""
-      echo "The AI response must start with 'STATUS: PASSED' or 'STATUS: FAILED'"
+      echo "Expected 'STATUS: PASSED' or 'STATUS: FAILED' in the first 15 lines"
       echo "Set STRICT_MODE=false in config to allow ambiguous responses"
       echo ""
       exit 1
@@ -680,9 +859,79 @@ get_staged_files() {
   done
 }
 
+get_ci_files() {
+  local patterns="$1"
+  local excludes="$2"
+
+  # Get files changed in the last commit (for CI environments)
+  local changed
+  changed=$(git diff --name-only --diff-filter=ACM HEAD~1..HEAD 2>/dev/null)
+
+  if [[ -z "$changed" ]]; then
+    return
+  fi
+
+  # Convert comma-separated patterns to array
+  IFS=',' read -ra PATTERN_ARRAY <<< "$patterns"
+  IFS=',' read -ra EXCLUDE_ARRAY <<< "$excludes"
+
+  # Filter files (same logic as get_staged_files)
+  echo "$changed" | while IFS= read -r file; do
+    local match=false
+    local excluded=false
+
+    # Check if file matches any include pattern
+    for pattern in "${PATTERN_ARRAY[@]}"; do
+      pattern=$(echo "$pattern" | xargs) # trim whitespace
+      if [[ "$pattern" == \** ]]; then
+        local suffix="${pattern#\*}"
+        if [[ "$file" == *"$suffix" ]]; then
+          match=true
+          break
+        fi
+      else
+        # shellcheck disable=SC2053
+        if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
+          match=true
+          break
+        fi
+      fi
+    done
+
+    # Check if file matches any exclude pattern
+    if [[ "$match" == true && -n "$excludes" ]]; then
+      for pattern in "${EXCLUDE_ARRAY[@]}"; do
+        pattern=$(echo "$pattern" | xargs) # trim whitespace
+        if [[ "$pattern" == \** ]]; then
+          local suffix="${pattern#\*}"
+          if [[ "$file" == *"$suffix" ]]; then
+            excluded=true
+            break
+          fi
+        else
+          # shellcheck disable=SC2053
+          if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
+            excluded=true
+            break
+          fi
+        fi
+      done
+    fi
+
+    if [[ "$match" == true && "$excluded" == false ]]; then
+      # Only include if file still exists (wasn't deleted)
+      if [[ -f "$file" ]]; then
+        echo "$file"
+      fi
+    fi
+  done
+}
+
 build_prompt() {
   local rules="$1"
   local files="$2"
+  local use_staged="${3:-true}"  # Read from staging area by default
+  local commit_msg="${4:-}"      # Optional commit message
 
   # Start building the prompt
   cat << EOF
@@ -691,16 +940,41 @@ You are a code reviewer. Analyze the files below and validate they comply with t
 === CODING STANDARDS ===
 $rules
 === END CODING STANDARDS ===
+EOF
+
+  # Include commit message if provided (from commit-msg hook)
+  if [[ -n "$commit_msg" ]]; then
+    cat << EOF
+
+=== COMMIT MESSAGE ===
+$commit_msg
+=== END COMMIT MESSAGE ===
+EOF
+  fi
+
+  cat << 'EOF'
 
 === FILES TO REVIEW ===
 EOF
 
-  # Add file contents - using process substitution to avoid subshell
+  # Add file contents
+  # In normal mode (pre-commit): read from staging area with "git show :file"
+  # In CI mode: read from working directory (files are already committed)
   while IFS= read -r file; do
-    if [[ -n "$file" && -f "$file" ]]; then
+    if [[ -n "$file" ]]; then
       echo ""
       echo "--- FILE: $file ---"
-      cat "$file"
+      if [[ "$use_staged" == "true" ]]; then
+        # Read from staging area (index) - this ensures we review exactly what will be committed
+        git show ":$file" 2>/dev/null || {
+          log_warning "Could not read staged content for: $file"
+        }
+      else
+        # CI mode: read from filesystem (file is already committed)
+        if [[ -f "$file" ]]; then
+          cat "$file"
+        fi
+      fi
     fi
   done <<< "$files"
 
@@ -708,7 +982,7 @@ EOF
 
 === END FILES ===
 
-**IMPORTANT: Your response MUST start with exactly one of these lines:**
+**IMPORTANT: Your response MUST include one of these lines near the beginning:**
 STATUS: PASSED
 STATUS: FAILED
 
@@ -720,7 +994,7 @@ STATUS: FAILED
 
 **If PASSED:** Confirm all files comply with the coding standards.
 
-**Start your response now with STATUS:**
+**Begin with STATUS:**
 EOF
 }
 
@@ -735,7 +1009,8 @@ main() {
       cmd_run "$@"
       ;;
     install)
-      cmd_install
+      shift
+      cmd_install "$@"
       ;;
     uninstall)
       cmd_uninstall

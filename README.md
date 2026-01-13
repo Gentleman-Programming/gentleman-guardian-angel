@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.2.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.6.1-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/bash-5.0%2B-orange.svg" alt="Bash">
   <img src="https://img.shields.io/badge/homebrew-tap-FBB040.svg" alt="Homebrew">
-  <img src="https://img.shields.io/badge/tests-68%20passing-brightgreen.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-161%20passing-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
 </p>
 
@@ -11,7 +11,7 @@
 
 <p align="center">
   <strong>Provider-agnostic code review using AI</strong><br>
-  Use Claude, Gemini, Codex, Ollama, or any AI to enforce your coding standards.<br>
+  Use Claude, Gemini, Codex, OpenCode, Ollama, or any AI to enforce your coding standards.<br>
   Zero dependencies. Pure Bash. Works everywhere.
 </p>
 
@@ -45,6 +45,7 @@ You have coding standards. Your team ignores them. Code reviews catch issues too
 ```
 
 **Key features:**
+
 - 🔌 **Provider agnostic** - Use whatever AI you have installed
 - 📦 **Zero dependencies** - Pure Bash, no Node/Python/Go required
 - 🪝 **Git native** - Installs as a standard pre-commit hook
@@ -82,7 +83,7 @@ cd gga
 
 ```bash
 gga version
-# Output: gga v2.2.0
+# Output: gga v2.6.1
 ```
 
 ---
@@ -163,7 +164,7 @@ $ cat > AGENTS.md << 'EOF'
 - Use `const` over `let` when possible
 - Prefer interfaces over type aliases for objects
 
-## React  
+## React
 - Use functional components with hooks
 - No `import * as React` - use named imports like `import { useState }`
 - All images must have alt text for accessibility
@@ -217,7 +218,7 @@ Violations found:
    - Issue: Using `any` type for props
    - Fix: Define proper interface for ButtonProps
 
-2. **src/components/Button.tsx:15** - React Rule  
+2. **src/components/Button.tsx:15** - React Rule
    - Issue: Using `import * as React`
    - Fix: Use `import { useState, useCallback } from 'react'`
 
@@ -263,19 +264,21 @@ All files comply with the coding standards defined in AGENTS.md.
 
 ## 📋 Commands
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `init` | Create sample `.gga` config file | `gga init` |
-| `install` | Install git pre-commit hook in current repo | `gga install` |
-| `uninstall` | Remove git pre-commit hook from current repo | `gga uninstall` |
-| `run` | Run code review on staged files | `gga run` |
-| `run --no-cache` | Run review ignoring cache | `gga run --no-cache` |
-| `config` | Display current configuration and status | `gga config` |
-| `cache status` | Show cache status for current project | `gga cache status` |
-| `cache clear` | Clear cache for current project | `gga cache clear` |
-| `cache clear-all` | Clear all cached data | `gga cache clear-all` |
-| `help` | Show help message with all commands | `gga help` |
-| `version` | Show installed version | `gga version` |
+| Command                | Description                                          | Example                    |
+| ---------------------- | ---------------------------------------------------- | -------------------------- |
+| `init`                 | Create sample `.gga` config file                     | `gga init`                 |
+| `install`              | Install git pre-commit hook (default)                | `gga install`              |
+| `install --commit-msg` | Install git commit-msg hook (for commit message validation) | `gga install --commit-msg` |
+| `uninstall`            | Remove git hooks from current repo                   | `gga uninstall`            |
+| `run`                  | Run code review on staged files                      | `gga run`                  |
+| `run --ci`             | Run code review on last commit (for CI/CD)           | `gga run --ci`             |
+| `run --no-cache`       | Run review ignoring cache                            | `gga run --no-cache`       |
+| `config`               | Display current configuration and status             | `gga config`               |
+| `cache status`         | Show cache status for current project                | `gga cache status`         |
+| `cache clear`          | Clear cache for current project                      | `gga cache clear`          |
+| `cache clear-all`      | Clear all cached data                                | `gga cache clear-all`      |
+| `help`                 | Show help message with all commands                  | `gga help`                 |
+| `version`              | Show installed version                               | `gga version`              |
 
 ### Command Details
 
@@ -290,14 +293,25 @@ $ gga init
 
 #### `gga install`
 
-Installs a git pre-commit hook that automatically runs code review on every commit.
+Installs a git hook that automatically runs code review on every commit.
+
+**Default (pre-commit hook):**
 
 ```bash
 $ gga install
 ✅ Installed pre-commit hook: .git/hooks/pre-commit
 ```
 
-If a pre-commit hook already exists, it will ask if you want to append to it.
+**With commit message validation (commit-msg hook):**
+
+```bash
+$ gga install --commit-msg
+✅ Installed commit-msg hook: .git/hooks/commit-msg
+```
+
+The `--commit-msg` flag installs a commit-msg hook instead of pre-commit. This allows GGA to also validate your commit message (e.g., conventional commits format, issue references, etc.). The commit message is automatically included in the AI review.
+
+If a hook already exists, GGA will append to it rather than replacing it.
 
 #### `gga uninstall`
 
@@ -373,10 +387,10 @@ GGA includes intelligent caching to speed up reviews by skipping files that have
 
 The cache automatically invalidates when:
 
-| Change | Effect |
-|--------|--------|
-| File content changes | Only that file is re-reviewed |
-| `AGENTS.md` changes | **All files** are re-reviewed |
+| Change                | Effect                        |
+| --------------------- | ----------------------------- |
+| File content changes  | Only that file is re-reviewed |
+| `AGENTS.md` changes   | **All files** are re-reviewed |
 | `.gga` config changes | **All files** are re-reviewed |
 
 ### Cache Commands
@@ -427,12 +441,13 @@ gga run --no-cache
 
 Use whichever AI CLI you have installed:
 
-| Provider | Config Value | CLI Command Used | Installation |
-|----------|-------------|------------------|--------------|
-| **Claude** | `claude` | `echo "prompt" \| claude --print` | [claude.ai/code](https://claude.ai/code) |
-| **Gemini** | `gemini` | `echo "prompt" \| gemini` | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
-| **Codex** | `codex` | `codex exec "prompt"` | `npm i -g @openai/codex` |
-| **Ollama** | `ollama:<model>` | `ollama run <model> "prompt"` | [ollama.ai](https://ollama.ai) |
+| Provider     | Config Value     | CLI Command Used                  | Installation                                                                       |
+| ------------ | ---------------- | --------------------------------- | ---------------------------------------------------------------------------------- |
+| **Claude**   | `claude`         | `echo "prompt" \| claude --print` | [claude.ai/code](https://claude.ai/code)                                           |
+| **Gemini**   | `gemini`         | `echo "prompt" \| gemini`         | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
+| **Codex**    | `codex`          | `codex exec "prompt"`             | `npm i -g @openai/codex`                                                           |
+| **OpenCode** | `opencode`       | `echo "prompt" \| opencode run`   | [opencode.ai](https://opencode.ai)                                                 |
+| **Ollama**   | `ollama:<model>` | `ollama run <model> "prompt"`     | [ollama.ai](https://ollama.ai)                                                     |
 
 ### Provider Examples
 
@@ -445,6 +460,12 @@ PROVIDER="gemini"
 
 # Use OpenAI Codex
 PROVIDER="codex"
+
+# Use OpenCode (uses default model)
+PROVIDER="opencode"
+
+# Use OpenCode with specific model
+PROVIDER="opencode:anthropic/claude-opus-4-5"
 
 # Use Ollama with Llama 3.2
 PROVIDER="ollama:llama3.2"
@@ -491,13 +512,13 @@ STRICT_MODE="true"
 
 ### Configuration Options
 
-| Option | Required | Default | Description |
-|--------|----------|---------|-------------|
-| `PROVIDER` | ✅ Yes | - | AI provider to use |
-| `FILE_PATTERNS` | No | `*` | Comma-separated file patterns to include |
-| `EXCLUDE_PATTERNS` | No | - | Comma-separated file patterns to exclude |
-| `RULES_FILE` | No | `AGENTS.md` | Path to your coding standards file |
-| `STRICT_MODE` | No | `true` | Fail on ambiguous AI responses |
+| Option             | Required | Default     | Description                              |
+| ------------------ | -------- | ----------- | ---------------------------------------- |
+| `PROVIDER`         | ✅ Yes   | -           | AI provider to use                       |
+| `FILE_PATTERNS`    | No       | `*`         | Comma-separated file patterns to include |
+| `EXCLUDE_PATTERNS` | No       | -           | Comma-separated file patterns to exclude |
+| `RULES_FILE`       | No       | `AGENTS.md` | Path to your coding standards file       |
+| `STRICT_MODE`      | No       | `true`      | Fail on ambiguous AI responses           |
 
 ### Config Hierarchy (Priority Order)
 
@@ -517,34 +538,163 @@ export GGA_PROVIDER="ollama:llama3.2"
 
 ## 📝 Rules File (AGENTS.md)
 
-The AI needs to know your standards. Create an `AGENTS.md` file:
+The AI needs to know your standards. Create an `AGENTS.md` file.
+
+### Best Practices for AGENTS.md
+
+Your rules file should be **optimized for LLM parsing**, not for human documentation. Here's why and how:
+
+#### 1. Keep it Concise (~100-200 lines)
+
+Large files dilute the AI's focus. A focused, concise file produces better reviews.
+
+```markdown
+# ❌ Bad: Verbose explanations
+
+## TypeScript Guidelines
+
+When writing TypeScript code, it's important to consider type safety.
+The `any` type should be avoided because it defeats the purpose of
+using TypeScript in the first place. Instead, you should always...
+(continues for 50 more lines)
+
+# ✅ Good: Direct and actionable
+
+## TypeScript
+
+REJECT if:
+
+- `any` type used
+- Missing return types on public functions
+- Type assertions without justification
+```
+
+#### 2. Use Clear Action Keywords
+
+Use `REJECT`, `REQUIRE`, `PREFER` to give the AI clear signals:
+
+| Keyword     | Meaning              | AI Action                           |
+| ----------- | -------------------- | ----------------------------------- |
+| `REJECT if` | Hard rule, must fail | Returns `STATUS: FAILED`            |
+| `REQUIRE`   | Mandatory pattern    | Returns `STATUS: FAILED` if missing |
+| `PREFER`    | Soft recommendation  | May note but won't fail             |
+
+#### 3. Use References for Complex Projects
+
+For large projects or monorepos, use **references** instead of concatenating multiple files:
 
 ```markdown
 # Code Review Rules
 
-## TypeScript
-- Use `const` and `let`, never `var`
-- No `any` types - always use proper typing
-- Prefer interfaces over type aliases for objects
-- Use optional chaining (`?.`) and nullish coalescing (`??`)
+## References
 
-## React
-- Functional components only, no class components
-- No `import * as React` - use named imports
-- Use semantic HTML elements
-- All images need alt text
-- Interactive elements need aria labels
+- UI guidelines: `ui/AGENTS.md`
+- API guidelines: `api/AGENTS.md`
+- Shared rules: `docs/CODE-STYLE.md`
 
-## Styling
-- Use Tailwind CSS utilities
-- No inline styles
-- No hex colors - use design tokens
+---
 
-## Testing
-- All new features need tests
-- Test files must be co-located with source files
-- Use descriptive test names that explain the behavior
+## Critical Rules (ALL files)
+
+REJECT if:
+
+- Hardcoded secrets/credentials
+- `console.log` in production code
+- Missing error handling
 ```
+
+**Why references work:** Claude, Gemini, and Codex have built-in tools to read files. When they see a reference like "`ui/AGENTS.md`", they can go read it if they need more context. This keeps your main file focused while allowing deep dives when needed.
+
+> ⚠️ **Note for Ollama users**: Ollama is a pure LLM without file-reading tools. If you use Ollama and need multiple rules files, you'll need to manually consolidate them into one file.
+
+#### 4. Structure for Scanning
+
+Use bullet points, not paragraphs. The AI scans faster:
+
+```markdown
+# ✅ Good: Scannable structure
+
+## TypeScript/React
+
+REJECT if:
+
+- `import * as React` → use `import { useState }`
+- Union types `type X = "a" | "b"` → use `const X = {...} as const`
+- `any` type without `// @ts-expect-error` justification
+
+PREFER:
+
+- Named exports over default exports
+- Composition over inheritance
+```
+
+#### 5. Real-World Example
+
+Here's a battle-tested example from a production monorepo:
+
+```markdown
+# Code Review Rules
+
+## References
+
+- UI details: `ui/AGENTS.md`
+- SDK details: `sdk/AGENTS.md`
+
+---
+
+## ALL FILES
+
+REJECT if:
+
+- Hardcoded secrets/credentials
+- `any` type (TypeScript) or missing type hints (Python)
+- Code duplication (violates DRY)
+- Silent error handling (empty catch blocks)
+
+---
+
+## TypeScript/React
+
+REJECT if:
+
+- `import React` → use `import { useState }`
+- `var()` or hex colors in className → use Tailwind
+- `useMemo`/`useCallback` without justification (React 19 Compiler handles this)
+- Missing `"use client"` in client components
+
+PREFER:
+
+- `cn()` for conditional class merging
+- Semantic HTML over divs
+- Colocated files (component + test + styles)
+
+---
+
+## Python
+
+REJECT if:
+
+- Missing type hints on public functions
+- Bare `except:` without specific exception
+- `print()` instead of `logger`
+
+REQUIRE:
+
+- Docstrings on all public classes/methods
+
+---
+
+## Response Format
+
+FIRST LINE must be exactly:
+STATUS: PASSED
+or
+STATUS: FAILED
+
+If FAILED, list: `file:line - rule violated - issue`
+```
+
+This file is **89 lines**, uses clear keywords, and has references for component-specific rules.
 
 > 💡 **Pro tip**: Your `AGENTS.md` can also serve as documentation for human reviewers!
 
@@ -690,21 +840,20 @@ npm install -D husky lint-staged
 ```
 
 `package.json`:
+
 ```json
 {
   "scripts": {
     "prepare": "husky"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ]
+    "*.{ts,tsx,js,jsx}": ["eslint --fix", "prettier --write"]
   }
 }
 ```
 
 `.husky/pre-commit`:
+
 ```bash
 #!/usr/bin/env bash
 
@@ -853,10 +1002,10 @@ jobs:
         run: |
           # Get changed files in PR
           git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed_files.txt
-          
+
           # Stage them for review
           cat /tmp/changed_files.txt | xargs git add
-          
+
           # Run review
           gga run
 ```
@@ -978,12 +1127,14 @@ make check
 
 ### Test Coverage
 
-| Module | Tests | Description |
-|--------|-------|-------------|
-| `cache.sh` | 27 | Hash functions, cache validation, file caching |
-| `providers.sh` | 13 | Provider parsing, validation, info display |
-| CLI commands | 28 | init, install, uninstall, run, config, cache |
-| **Total** | **68** | Full coverage of core functionality |
+| Module             | Tests   | Description                                             |
+| ------------------ | ------- | ------------------------------------------------------- |
+| `cache.sh`         | 27      | Hash functions, cache validation, file caching          |
+| `providers.sh`     | 49      | All providers, routing, validation, security            |
+| CLI commands       | 34      | init, install, uninstall, run, run --ci, config, cache  |
+| Ollama integration | 12      | Real Ollama tests (local only, requires `qwen2.5:0.5b`) |
+| OpenCode           | 8       | OpenCode provider tests                                 |
+| **Total**          | **147** | Full coverage of core functionality                     |
 
 ### Adding New Tests
 
@@ -999,7 +1150,62 @@ shellspec spec/unit/my_feature_spec.sh
 
 ## 📋 Changelog
 
-### v2.2.0 (Latest)
+### v2.6.1 (Latest)
+
+- ✅ **fix**: Relaxed STATUS parsing to handle AI preamble text (#18, PR #19)
+  - Search for STATUS in first 15 lines instead of requiring line 1
+  - Accept markdown formatting (`**STATUS: PASSED**`)
+  - Works with AI agents that have system-wide instruction files (AGENTS.md, CLAUDE.md)
+- ✅ **14 new tests** for STATUS parsing edge cases
+- ✅ **161 tests** total
+
+### v2.6.0
+
+- ✅ **feat**: Commit message validation support (PR #17, based on #11 by @ramarivera)
+  - `gga install --commit-msg` installs commit-msg hook instead of pre-commit
+  - Commit message is automatically included in AI review when available
+  - No config needed - behavior is automatic based on context
+- ✅ **fix**: Read from staging area (`git show :file`) to prevent index corruption (#15, #16)
+  - Fixes race conditions when files are modified after staging
+  - Works correctly with lint-staged, prettier, and other tools
+- ✅ **feat**: Signal handling for graceful cleanup on interruption
+- ✅ `gga uninstall` now handles both pre-commit and commit-msg hooks
+- ✅ **147 tests** (17 new for commit-msg and staging area fixes)
+
+### v2.5.1
+
+- ✅ **fix(gemini)**: Use `-p` flag for non-interactive prompt passing - fixes exit code 41 in CI
+- ✅ **fix(opencode)**: Use positional argument instead of stdin pipe per documentation
+- ✅ Both providers now work correctly in CI/non-interactive environments
+
+### v2.5.0
+
+- ✅ **feat**: OpenCode provider support (PR #4 by @ramarivera)
+  - `PROVIDER="opencode"` for default model
+  - `PROVIDER="opencode:model_name"` for specific models
+- ✅ Added `CONTRIBUTING.md` with development guide
+- ✅ **130 tests** (12 new for OpenCode)
+
+### v2.4.0
+
+- ✅ **feat**: CI mode (`--ci` flag) for GitHub Actions/GitLab CI
+  - Reviews files from last commit (`HEAD~1..HEAD`) instead of staged files
+  - Cache automatically disabled in CI mode
+- ✅ **118 tests** (6 new for CI mode)
+
+### v2.3.0
+
+- ✅ Fixed Ollama ANSI escape codes breaking STATUS parsing (#6)
+- ✅ New `execute_ollama_api()` using curl for clean JSON responses
+- ✅ Fallback `execute_ollama_cli()` with ANSI stripping
+- ✅ Security validation for `OLLAMA_HOST`
+- ✅ Worktree support and improved hook install/uninstall (PR #10 by @ramarivera)
+- ✅ Best practices docs for AGENTS.md rules file
+- ✅ GitHub Actions CI pipeline (lint, unit tests, integration tests)
+- ✅ Expanded test suite to **104 tests**
+
+### v2.2.0
+
 - ✅ Added comprehensive test suite with **68 tests**
 - ✅ Unit tests for `cache.sh` and `providers.sh`
 - ✅ Integration tests for all CLI commands
@@ -1007,17 +1213,20 @@ shellspec spec/unit/my_feature_spec.sh
 - ✅ Fixed shellcheck warnings
 
 ### v2.1.0
+
 - ✅ Smart caching system - skip unchanged files
 - ✅ Auto-invalidation when AGENTS.md or .gga changes
 - ✅ Cache commands: `status`, `clear`, `clear-all`
 - ✅ `--no-cache` flag to bypass caching
 
 ### v2.0.0
+
 - ✅ Renamed to Gentleman Guardian Angel (gga)
 - ✅ Auto-migration from legacy `ai-code-review` hooks
 - ✅ Homebrew tap distribution
 
 ### v1.0.0
+
 - ✅ Initial release with Claude, Gemini, Codex, Ollama support
 - ✅ File patterns and exclusions
 - ✅ Strict mode for CI/CD
@@ -1029,9 +1238,11 @@ shellspec spec/unit/my_feature_spec.sh
 Contributions are welcome! Some ideas:
 
 - [ ] Add more providers (Copilot, Codeium, etc.)
-- [ ] Support for `.gga.yaml` format  
+- [ ] Support for `.gga.yaml` format
 - [x] ~~Caching to avoid re-reviewing unchanged files~~ ✅ Done in v2.1.0
 - [x] ~~Add test suite~~ ✅ Done in v2.2.0
+- [x] ~~CI mode for GitHub Actions/GitLab~~ ✅ Done in v2.4.0
+- [x] ~~OpenCode provider~~ ✅ Done in v2.5.0 (by @ramarivera)
 - [ ] GitHub Action version
 - [ ] Output formats (JSON, SARIF for IDE integration)
 

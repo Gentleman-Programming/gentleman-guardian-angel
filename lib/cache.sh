@@ -13,6 +13,46 @@
 CACHE_DIR="$HOME/.cache/gga"
 
 # ============================================================================
+# Cross-platform Hash Helper
+# ============================================================================
+# macOS uses 'shasum -a 256', Linux uses 'sha256sum'
+# This function abstracts the difference
+
+_get_hash_command() {
+  if command -v sha256sum &>/dev/null; then
+    echo "sha256sum"
+  elif command -v shasum &>/dev/null; then
+    echo "shasum -a 256"
+  else
+    echo ""
+  fi
+}
+
+_compute_hash() {
+  local hash_cmd
+  hash_cmd=$(_get_hash_command)
+  
+  if [[ -z "$hash_cmd" ]]; then
+    echo "ERROR: No hash command available (need sha256sum or shasum)" >&2
+    return 1
+  fi
+  
+  $hash_cmd "$@" | cut -d' ' -f1
+}
+
+_compute_hash_stdin() {
+  local hash_cmd
+  hash_cmd=$(_get_hash_command)
+  
+  if [[ -z "$hash_cmd" ]]; then
+    echo "ERROR: No hash command available (need sha256sum or shasum)" >&2
+    return 1
+  fi
+  
+  $hash_cmd | cut -d' ' -f1
+}
+
+# ============================================================================
 # Cache Functions
 # ============================================================================
 
@@ -20,7 +60,7 @@ CACHE_DIR="$HOME/.cache/gga"
 get_file_hash() {
   local file="$1"
   if [[ -f "$file" ]]; then
-    shasum -a 256 "$file" 2>/dev/null | cut -d' ' -f1
+    _compute_hash "$file" 2>/dev/null
   else
     echo ""
   fi
@@ -29,7 +69,7 @@ get_file_hash() {
 # Get hash of a string
 get_string_hash() {
   local str="$1"
-  echo -n "$str" | shasum -a 256 | cut -d' ' -f1
+  echo -n "$str" | _compute_hash_stdin
 }
 
 # Get project identifier (based on git root path)
