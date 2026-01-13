@@ -234,14 +234,25 @@ execute_github_models() {
                   }')
 
   local response
+  local curl_error_file
+  curl_error_file="$(mktemp)"
+
   if ! response=$(curl -sS https://models.inference.ai.azure.com/chat/completions \
           -H "Authorization: Bearer $token" \
           -H "Content-Type: application/json" \
-          -d "$json_payload"); then
-      echo -e "${RED}❌ GitHub Models request failed${NC}" >&2
+          -d "$json_payload" 2> "$curl_error_file"); then
+      local curl_error_msg
+      curl_error_msg="$(<"$curl_error_file")"
+      rm -f "$curl_error_file"
+      if [[ -n "$curl_error_msg" ]]; then
+          echo -e "${RED}❌ GitHub Models request failed: $curl_error_msg${NC}" >&2
+      else
+          echo -e "${RED}❌ GitHub Models request failed${NC}" >&2
+      fi
       return 1
   fi
 
+  rm -f "$curl_error_file"
   if [[ -z "$response" ]]; then
       echo -e "${RED}❌ Empty response from GitHub Models${NC}" >&2
       return 1
