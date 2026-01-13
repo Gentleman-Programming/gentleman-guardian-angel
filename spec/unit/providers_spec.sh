@@ -320,25 +320,25 @@ All good!"
   Describe 'validate_provider() - ollama model validation'
     # Ollama validation has logic that checks model format
     # This can fail BEFORE checking if ollama CLI exists
-
+    
     # We need to test the model parsing logic
     # The function first checks CLI existence, then model
     # So we can't easily test the model validation without the CLI
-
+    
     # Instead, let's test the parsing helper if we had one
     # For now, we'll skip these or mark them as pending
-
+    
     Skip "Requires refactoring validate_provider to separate concerns"
   End
 
   Describe 'provider base extraction'
     # Test the base provider extraction logic
-
+    
     helper_get_base_provider() {
       local provider="$1"
       echo "${provider%%:*}"
     }
-
+    
     It 'extracts base provider from simple provider'
       When call helper_get_base_provider "claude"
       The output should eq "claude"

@@ -173,7 +173,7 @@ execute_provider() {
 
 execute_claude() {
   local prompt="$1"
-
+  
   # Claude CLI accepts prompt via stdin pipe
   # Redirect stderr to stdout to capture any error messages
   printf '%s' "$prompt" | claude --print 2>&1
@@ -182,7 +182,7 @@ execute_claude() {
 
 execute_gemini() {
   local prompt="$1"
-
+  
   # Gemini CLI requires prompt as argument or via -p flag
   # Using -p flag for explicit prompt passing
   # Note: In CI/non-interactive environments, --yolo may be needed for auto-approval
@@ -192,7 +192,7 @@ execute_gemini() {
 
 execute_codex() {
   local prompt="$1"
-
+  
   # Codex uses exec subcommand for non-interactive mode
   # Using --output-last-message to get just the final response
   codex exec "$prompt" 2>&1
@@ -260,7 +260,7 @@ execute_github_models() {
 execute_opencode() {
   local model="$1"
   local prompt="$2"
-
+  
   # OpenCode CLI accepts prompt as positional argument
   # opencode run [message..] - message is a positional array
   if [[ -n "$model" ]]; then
@@ -275,13 +275,13 @@ execute_ollama() {
   local model="$1"
   local prompt="$2"
   local host="${OLLAMA_HOST:-http://localhost:11434}"
-
+  
   # Validate OLLAMA_HOST format to prevent injection attacks
   if ! validate_ollama_host "$host"; then
     echo "Error: Invalid OLLAMA_HOST format. Expected: http(s)://hostname(:port)" >&2
     return 1
   fi
-
+  
   # Use python3 + curl if available (cleaner output, supports remote hosts)
   # Falls back to CLI with ANSI stripping if python3 is not available
   if command -v python3 &> /dev/null && command -v curl &> /dev/null; then
@@ -297,8 +297,8 @@ execute_ollama() {
 # Accepts: http(s)://hostname(:port) with optional trailing slash
 validate_ollama_host() {
   local host="$1"
-
-  # Regex: http or https, followed by hostname (alphanumeric, dots, hyphens),
+  
+  # Regex: http or https, followed by hostname (alphanumeric, dots, hyphens), 
   # optional port, optional trailing slash
   if [[ "$host" =~ ^https?://[a-zA-Z0-9.-]+(:[0-9]+)?/?$ ]]; then
     return 0
@@ -312,7 +312,7 @@ execute_ollama_api() {
   local model="$1"
   local prompt="$2"
   local host="$3"
-
+  
   # Build JSON payload safely using python3 to escape special characters
   # Using stdin to avoid ARG_MAX limits with large prompts
   local json_payload
@@ -331,24 +331,24 @@ print(payload)
     echo "$json_payload" >&2
     return 1
   fi
-
+  
   # Remove trailing slash from host if present
   host="${host%/}"
-
+  
   # Call Ollama API
   local api_response
   api_response=$(curl -s --fail-with-body \
     -H "Content-Type: application/json" \
     -d "$json_payload" \
     "${host}/api/generate" 2>&1)
-
+  
   local curl_status=$?
   if [[ $curl_status -ne 0 ]]; then
     echo "Error: Failed to connect to Ollama at $host" >&2
     echo "$api_response" >&2
     return 1
   fi
-
+  
   # Extract response safely using python3
   printf '%s' "$api_response" | python3 -c "
 import sys, json
@@ -373,7 +373,7 @@ except json.JSONDecodeError as e:
 execute_ollama_cli() {
   local model="$1"
   local prompt="$2"
-
+  
   # Run ollama CLI, suppress stderr (spinner/progress), strip ANSI codes from stdout
   # The 2>/dev/null removes spinner and progress messages
   # The sed removes any remaining ANSI escape sequences

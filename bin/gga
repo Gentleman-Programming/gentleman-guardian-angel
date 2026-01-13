@@ -178,18 +178,18 @@ cmd_config() {
 
   echo -e "${BOLD}Current Configuration:${NC}"
   echo ""
-
+  
   # Check config sources
   GLOBAL_CONFIG="$HOME/.config/gga/config"
   PROJECT_CONFIG=".gga"
-
+  
   echo -e "${BOLD}Config Files:${NC}"
   if [[ -f "$GLOBAL_CONFIG" ]]; then
     echo -e "  Global:  ${GREEN}$GLOBAL_CONFIG${NC}"
   else
     echo -e "  Global:  ${YELLOW}Not found${NC}"
   fi
-
+  
   if [[ -f "$PROJECT_CONFIG" ]]; then
     echo -e "  Project: ${GREEN}$PROJECT_CONFIG${NC}"
   else
@@ -224,9 +224,9 @@ cmd_config() {
 
 cmd_init() {
   print_banner
-
+  
   PROJECT_CONFIG=".gga"
-
+  
   if [[ -f "$PROJECT_CONFIG" ]]; then
     log_warning "Config file already exists: $PROJECT_CONFIG"
     read -rp "Overwrite? (y/N): " confirm
@@ -302,7 +302,7 @@ cmd_install() {
 
   # Parse arguments to determine hook type
   local hook_type="pre-commit"  # default
-
+  
   for arg in "$@"; do
     case "$arg" in
       --commit-msg)
@@ -317,7 +317,7 @@ cmd_install() {
   # - Worktree: returns the main repo's .git/hooks (where git actually looks)
   HOOKS_DIR=$(git rev-parse --git-path hooks)
   HOOK_PATH="$HOOKS_DIR/$hook_type"
-
+  
   # Ensure hooks directory exists (may not exist in fresh repos)
   mkdir -p "$HOOKS_DIR"
 
@@ -352,10 +352,10 @@ cmd_install() {
       log_warning "Gentleman Guardian Angel hook already installed in $hook_type"
       exit 0
     fi
-
+    
     # Existing hook without GGA - insert with markers
     log_info "Existing $hook_type hook found, adding GGA..."
-
+    
     # Build the GGA block
     local gga_block
     gga_block=$(printf '\n%s\n%s\n%s\n%s' \
@@ -363,14 +363,14 @@ cmd_install() {
       "# Gentleman Guardian Angel - Code Review" \
       "$gga_run_cmd" \
       "$GGA_MARKER_END")
-
+    
     # Check if hook ends with 'exit 0' or 'exit' (with optional whitespace)
     # If so, insert GGA block before the final exit to ensure it runs
     if grep -Eq '^[[:space:]]*exit[[:space:]]*[0-9]*[[:space:]]*$' "$HOOK_PATH"; then
       # Find the last exit line and insert before it
       local last_exit_line
       last_exit_line=$(grep -n '^[[:space:]]*exit[[:space:]]*[0-9]*[[:space:]]*$' "$HOOK_PATH" | tail -1 | cut -d: -f1)
-
+      
       if [[ -n "$last_exit_line" ]]; then
         # Insert GGA block before the last exit line
         local temp_file
@@ -388,7 +388,7 @@ cmd_install() {
         exit 0
       fi
     fi
-
+    
     # No exit statement found, append to end
     echo "$gga_block" >> "$HOOK_PATH"
     log_success "Appended Gentleman Guardian Angel to existing $hook_type hook: $HOOK_PATH"
@@ -423,13 +423,13 @@ cmd_uninstall() {
   # Use --git-path hooks to get the correct hooks directory
   # This works correctly for both regular repos and worktrees
   HOOKS_DIR=$(git rev-parse --git-path hooks)
-
+  
   local found_any=false
 
   # Check both hook types
   for hook_type in "pre-commit" "commit-msg"; do
     local hook_path="$HOOKS_DIR/$hook_type"
-
+    
     if [[ -f "$hook_path" ]] && grep -q "gga" "$hook_path"; then
       found_any=true
       uninstall_from_hook "$hook_path" "$hook_type"
@@ -439,7 +439,7 @@ cmd_uninstall() {
   if [[ "$found_any" == false ]]; then
     log_warning "Gentleman Guardian Angel hook not found"
   fi
-
+  
   echo ""
 }
 
@@ -456,7 +456,7 @@ uninstall_from_hook() {
     else
       sed -i "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$hook_path"
     fi
-
+    
     # Check if file is now empty or only has shebang/whitespace
     local remaining_content
     remaining_content=$(grep -Ecv '^#!|^[[:space:]]*$' "$hook_path" || true)
@@ -489,9 +489,9 @@ uninstall_from_hook() {
 
 cmd_cache() {
   local subcommand="${1:-status}"
-
+  
   print_banner
-
+  
   case "$subcommand" in
     clear)
       clear_project_cache
@@ -505,34 +505,34 @@ cmd_cache() {
       ;;
     status)
       load_config
-
+      
       local cache_dir
       cache_dir=$(get_project_cache_dir)
-
+      
       echo -e "${BOLD}Cache Status:${NC}"
       echo ""
-
+      
       if [[ -z "$cache_dir" ]]; then
         echo -e "  Project cache: ${YELLOW}Not initialized (not in a git repo?)${NC}"
       elif [[ ! -d "$cache_dir" ]]; then
         echo -e "  Project cache: ${YELLOW}Not initialized${NC}"
       else
         echo -e "  Cache directory: ${CYAN}$cache_dir${NC}"
-
+        
         # Check if cache is valid
         if is_cache_valid "$RULES_FILE" ".gga"; then
           echo -e "  Cache validity: ${GREEN}Valid${NC}"
         else
           echo -e "  Cache validity: ${YELLOW}Invalid (rules or config changed)${NC}"
         fi
-
+        
         # Count cached files
         local cached_count=0
         if [[ -d "$cache_dir/files" ]]; then
           cached_count=$(find "$cache_dir/files" -type f 2>/dev/null | wc -l | xargs)
         fi
         echo -e "  Cached files: ${CYAN}$cached_count${NC}"
-
+        
         # Show cache size
         if command -v du &> /dev/null; then
           local cache_size
@@ -559,7 +559,7 @@ cmd_run() {
   local use_cache=true
   local ci_mode=false
   local commit_msg_file=""
-
+  
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
@@ -578,7 +578,7 @@ cmd_run() {
         ;;
     esac
   done
-
+  
   print_banner
   load_config
 
@@ -624,12 +624,12 @@ cmd_run() {
   if [[ -n "$EXCLUDE_PATTERNS" ]]; then
     log_info "Exclude patterns: $EXCLUDE_PATTERNS"
   fi
-
+  
   # Mode status
   if [[ "$ci_mode" == true ]]; then
     log_info "Mode: ${CYAN}CI (reviewing last commit)${NC}"
   fi
-
+  
   # Cache status
   if [[ "$use_cache" == true ]]; then
     log_info "Cache: ${GREEN}enabled${NC}"
@@ -661,35 +661,35 @@ cmd_run() {
   # Initialize/validate cache
   local files_to_review="$FILES_TO_CHECK"
   local cache_initialized=false
-
+  
   if [[ "$use_cache" == true ]]; then
     # Check if cache is valid, if not invalidate it
     if ! is_cache_valid "$RULES_FILE" ".gga"; then
       log_info "Cache invalidated (rules or config changed)"
       invalidate_cache
     fi
-
+    
     # Initialize cache
     init_cache "$RULES_FILE" ".gga" > /dev/null
     cache_initialized=true
-
+    
     # Filter out cached files
     files_to_review=$(filter_uncached_files "$FILES_TO_CHECK")
-
+    
     # Calculate cached files
     local total_count=0
     local uncached_count=0
-
+    
     while IFS= read -r file; do
       [[ -n "$file" ]] && total_count=$((total_count + 1))
     done <<< "$FILES_TO_CHECK"
-
+    
     while IFS= read -r file; do
       [[ -n "$file" ]] && uncached_count=$((uncached_count + 1))
     done <<< "$files_to_review"
-
+    
     local cached_count=$((total_count - uncached_count))
-
+    
     if [[ $cached_count -gt 0 ]]; then
       log_success "$cached_count file(s) passed from cache"
     fi
@@ -703,7 +703,7 @@ cmd_run() {
     echo ""
     exit 0
   fi
-
+  
   echo "$files_to_review" | while IFS= read -r file; do
     if [[ -n "$file" ]]; then
       echo "  - $file"
@@ -753,7 +753,7 @@ cmd_run() {
   # Accepts: "STATUS: PASSED", "**STATUS: PASSED**", etc.
   local status_check
   status_check=$(echo "$RESULT" | head -n 15)
-
+  
   if echo "$status_check" | grep -q "STATUS: PASSED"; then
     # Cache the passed files
     if [[ "$cache_initialized" == true ]]; then
