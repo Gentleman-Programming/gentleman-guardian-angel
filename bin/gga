@@ -20,6 +20,10 @@ source "$LIB_DIR/providers.sh"
 source "$LIB_DIR/cache.sh"
 # shellcheck source=lib/pr_mode.sh
 source "$LIB_DIR/pr_mode.sh"
+# shellcheck source=lib/config.sh
+source "$LIB_DIR/config.sh"
+# shellcheck source=lib/sqlite.sh
+source "$LIB_DIR/sqlite.sh"
 
 # ============================================================================
 # Signal Handling - Graceful cleanup on interruption
@@ -80,6 +84,8 @@ print_help() {
   echo "  uninstall         Remove git hooks from current repo"
   echo "  config            Show current configuration"
   echo "  init              Create a sample .gga config file"
+  echo "  history           Show review history"
+  echo "  search <query>    Search past reviews (FTS5)"
   echo "  cache clear       Clear cache for current project"
   echo "  cache clear-all   Clear all cached data"
   echo "  cache status      Show cache status"
@@ -119,6 +125,9 @@ print_help() {
   echo "  gga run --ci           # Run review in CI (last commit)"
   echo "  gga run --pr-mode      # Review full PR changes"
   echo "  gga run --pr-mode --diff-only  # Review PR diffs only"
+  echo "  gga history            # Show recent reviews"
+  echo "  gga history --limit 10 # Show last 10 reviews"
+  echo "  gga search \"sql\"       # Search for reviews mentioning SQL"
   echo "  gga cache status       # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
@@ -588,6 +597,164 @@ cmd_cache() {
   esac
 }
 
+cmd_history() {
+  print_banner
+  load_env_config
+
+  # Parse arguments
+  local limit="$GGA_HISTORY_LIMIT"
+  local status_filter=""
+  local project_filter=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --limit)
+        limit="$2"
+        shift 2
+        ;;
+      --limit=*)
+        limit="${1#*=}"
+        shift
+        ;;
+      --status)
+        status_filter="$2"
+        shift 2
+        ;;
+      --status=*)
+        status_filter="${1#*=}"
+        shift
+        ;;
+      --project)
+        project_filter="$2"
+        shift 2
+        ;;
+      --project=*)
+        project_filter="${1#*=}"
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Check if sqlite3 is available
+  if ! command -v sqlite3 &> /dev/null; then
+    log_error "sqlite3 not found. History requires sqlite3."
+    exit 1
+  fi
+
+  # Check if database exists
+  if [[ ! -f "$GGA_DB_PATH" ]]; then
+    log_warning "No review history found."
+    echo ""
+    echo "Reviews are saved automatically when you run 'gga run'."
+    echo "Database location: $GGA_DB_PATH"
+    echo ""
+    exit 0
+  fi
+
+  echo -e "${BOLD}Review History:${NC}"
+  echo ""
+
+  # Get reviews
+  local reviews
+  reviews=$(db_get_reviews "$limit" "$status_filter" "$project_filter")
+
+  if [[ -z "$reviews" || "$reviews" == "[]" ]]; then
+    log_info "No reviews found matching criteria."
+    exit 0
+  fi
+
+  # Format output (requires jq)
+  if command -v jq &> /dev/null; then
+    echo "$reviews" | jq -r '.[] | "  \(.id) | \(.created_at) | \(.status) | \(.project_name) | \(.files_count) file(s)"'
+  else
+    echo "$reviews"
+  fi
+  echo ""
+
+  # Show stats
+  local stats
+  stats=$(db_stats)
+  echo -e "${BOLD}Statistics:${NC}"
+  echo "  $stats" | tr '|' ' '
+  echo ""
+}
+
+cmd_search() {
+  print_banner
+  load_env_config
+
+  local query="$1"
+  local limit="${GGA_SEARCH_LIMIT:-20}"
+
+  # Parse additional arguments
+  shift || true
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --limit)
+        limit="$2"
+        shift 2
+        ;;
+      --limit=*)
+        limit="${1#*=}"
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$query" ]]; then
+    log_error "Search query required"
+    echo ""
+    echo "Usage: gga search <query> [--limit N]"
+    echo ""
+    echo "Examples:"
+    echo "  gga search \"authentication\""
+    echo "  gga search \"sql injection\" --limit 10"
+    echo ""
+    exit 1
+  fi
+
+  # Check if sqlite3 is available
+  if ! command -v sqlite3 &> /dev/null; then
+    log_error "sqlite3 not found. Search requires sqlite3."
+    exit 1
+  fi
+
+  # Check if database exists
+  if [[ ! -f "$GGA_DB_PATH" ]]; then
+    log_warning "No review history found."
+    echo ""
+    echo "Reviews are saved automatically when you run 'gga run'."
+    echo ""
+    exit 0
+  fi
+
+  echo -e "${BOLD}Search Results for:${NC} $query"
+  echo ""
+
+  # Search reviews
+  local results
+  results=$(db_search_reviews "$query" "$limit")
+
+  if [[ -z "$results" || "$results" == "[]" ]]; then
+    log_info "No reviews found matching: $query"
+    exit 0
+  fi
+
+  # Format output (requires jq)
+  if command -v jq &> /dev/null; then
+    echo "$results" | jq -r '.[] | "  \(.id) | \(.status) | \(.project_name) | \(.match_snippet)"'
+  else
+    echo "$results"
+  fi
+  echo ""
+}
+
 cmd_run() {
   local use_cache=true
   local ci_mode=false
@@ -818,6 +985,10 @@ cmd_run() {
   log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
   echo ""
 
+  # Capture start time for duration tracking
+  local start_time
+  start_time=$(date +%s%3N 2>/dev/null || date +%s)000
+
   # Temporarily disable set -e to capture exit status properly
   # (bash 3.2 on macOS can exit on non-zero in command substitution)
   set +e
@@ -856,22 +1027,65 @@ cmd_run() {
   echo "$RESULT"
   echo ""
 
+  # Calculate duration
+  local end_time duration_ms
+  end_time=$(date +%s%3N 2>/dev/null || date +%s)000
+  duration_ms=$((end_time - start_time))
+
+  # Helper function to save review to SQLite
+  save_review_to_db() {
+    local review_status="$1"
+
+    # Only save if sqlite3 is available
+    command -v sqlite3 &> /dev/null || return 0
+
+    # Initialize database if needed
+    load_env_config
+    db_init > /dev/null 2>&1 || return 0
+
+    # Get project info
+    local project_path project_name git_branch git_commit
+    project_path=$(pwd)
+    project_name=$(basename "$project_path")
+    git_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    git_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+
+    # Build files list and count
+    local files_list files_count
+    files_list=$(echo "$files_to_review" | tr '\n' ',' | sed 's/,$//')
+    files_count=$(echo "$files_to_review" | grep -c . || echo "0")
+
+    # Generate diff hash for deduplication
+    local diff_content diff_hash
+    diff_content=$(git diff --cached 2>/dev/null || echo "")
+    diff_hash=$(echo "$diff_content" | md5sum 2>/dev/null | cut -d' ' -f1 || echo "")
+
+    # Save to database
+    db_save_review "$project_path" "$project_name" "$git_branch" "$git_commit" \
+      "$files_list" "$files_count" "$diff_content" "$diff_hash" \
+      "$RESULT" "$review_status" "$PROVIDER" "" "$duration_ms" 2>/dev/null || true
+  }
+
   # Parse result
   # Search for STATUS in the first 15 lines to handle AI responses that include
   # preamble text (e.g., instruction acknowledgments, markdown formatting)
   # Accepts: "STATUS: PASSED", "**STATUS: PASSED**", etc.
   local status_check
   status_check=$(echo "$RESULT" | head -n 15)
-  
+
   if echo "$status_check" | grep -q "STATUS: PASSED"; then
     # Cache the passed files
     if [[ "$cache_initialized" == true ]]; then
       cache_files_passed "$files_to_review"
     fi
+    # Save to history
+    save_review_to_db "PASSED"
     log_success "CODE REVIEW PASSED"
     echo ""
     exit 0
   elif echo "$status_check" | grep -q "STATUS: FAILED"; then
+    # Save to history
+    save_review_to_db "FAILED"
     log_error "CODE REVIEW FAILED"
     echo ""
     echo "Fix the violations listed above before committing."
@@ -879,6 +1093,8 @@ cmd_run() {
     exit 1
   else
     log_warning "Could not determine review status"
+    # Save to history with UNKNOWN status
+    save_review_to_db "UNKNOWN"
     if [[ "$STRICT_MODE" == "true" ]]; then
       log_error "STRICT MODE: Failing due to ambiguous response"
       echo ""
@@ -1137,6 +1353,14 @@ main() {
     cache)
       shift
       cmd_cache "$@"
+      ;;
+    history)
+      shift
+      cmd_history "$@"
+      ;;
+    search)
+      shift
+      cmd_search "$@"
       ;;
     version|--version|-v)
       print_version
