@@ -236,6 +236,9 @@ execute_github_models() {
                       temperature: 0.2
                   }')
 
+  local curl_error_file
+  curl_error_file=$(mktemp)
+
   local response
   if ! response=$(curl -sS $GITHUB_MODELS_API_ENDPOINT \
           -H "Authorization: Bearer $token" \
