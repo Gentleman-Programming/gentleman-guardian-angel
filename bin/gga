@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.8.0"
+VERSION="2.9.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -78,6 +78,7 @@ print_help() {
   echo ""
   echo -e "${BOLD}COMMANDS:${NC}"
   echo "  run [--no-cache]  Run code review on staged files"
+  echo "  ask <question>    Ask questions about your review history (RAG)"
   echo "  install           Install git pre-commit hook (default)"
   echo "  install --commit-msg"
   echo "                    Install git commit-msg hook (for commit message validation)"
@@ -94,6 +95,7 @@ print_help() {
   echo ""
   echo -e "${BOLD}RUN OPTIONS:${NC}"
   echo "  --no-cache        Force review all files, ignoring cache"
+  echo "  --no-rag          Disable RAG (context from review history)"
   echo "  --ci              CI mode: review files changed in last commit (HEAD~1..HEAD)"
   echo "                    Use this in GitLab CI, GitHub Actions, etc."
   echo "  --pr-mode         PR mode: review all files changed in the full PR"
@@ -120,11 +122,13 @@ print_help() {
   echo "  gga init               # Create sample config"
   echo "  gga install            # Install pre-commit hook (default)"
   echo "  gga install --commit-msg  # Install commit-msg hook"
-  echo "  gga run                # Run review (with cache)"
+  echo "  gga run                # Run review (with cache + RAG)"
   echo "  gga run --no-cache     # Run review (ignore cache)"
+  echo "  gga run --no-rag       # Run review (without historical context)"
   echo "  gga run --ci           # Run review in CI (last commit)"
   echo "  gga run --pr-mode      # Review full PR changes"
   echo "  gga run --pr-mode --diff-only  # Review PR diffs only"
+  echo "  gga ask \"common issues?\"  # Ask about your review history"
   echo "  gga history            # Show recent reviews"
   echo "  gga history --limit 10 # Show last 10 reviews"
   echo "  gga search \"sql\"       # Search for reviews mentioning SQL"
@@ -884,18 +888,59 @@ cmd_search() {
   echo ""
 }
 
+# ============================================================================
+# Ask Command - Query review history using RAG
+# ============================================================================
+
+cmd_ask() {
+  local question="$*"
+
+  if [[ -z "$question" ]]; then
+    log_error "Please provide a question"
+    echo ""
+    echo "Usage: gga ask \"your question\""
+    echo ""
+    echo "Examples:"
+    echo "  gga ask \"what are the most common issues?\""
+    echo "  gga ask \"how do we handle authentication?\""
+    echo "  gga ask \"sql injection patterns?\""
+    echo ""
+    exit 1
+  fi
+
+  print_banner
+  load_env_config
+
+  # Source RAG module
+  # shellcheck source=lib/rag.sh
+  if ! source "$LIB_DIR/rag.sh" 2>/dev/null; then
+    log_error "RAG module not available"
+    exit 1
+  fi
+
+  log_info "Searching review history for: \"$question\""
+  echo ""
+
+  # Use rag_ask to get context
+  rag_ask "$question"
+}
+
 cmd_run() {
   local use_cache=true
   local ci_mode=false
   local pr_mode=false
   local diff_only=false
+  local use_rag=true
   local commit_msg_file=""
-  
+
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
       --no-cache)
         use_cache=false
+        ;;
+      --no-rag)
+        use_rag=false
         ;;
       --ci)
         ci_mode=true
@@ -1108,6 +1153,31 @@ cmd_run() {
       use_staged="false"
     fi
     PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
+  fi
+
+  # Augment prompt with RAG (historical context) if enabled
+  if [[ "$use_rag" == "true" ]]; then
+    # Source RAG module
+    # shellcheck source=lib/rag.sh
+    if source "$LIB_DIR/rag.sh" 2>/dev/null; then
+      # Get diff for pattern extraction
+      local diff_content
+      if [[ "$ci_mode" == "true" ]]; then
+        diff_content=$(git diff HEAD~1..HEAD 2>/dev/null || echo "")
+      else
+        diff_content=$(git diff --cached 2>/dev/null || echo "")
+      fi
+
+      # Augment prompt with historical context
+      local augmented_prompt
+      augmented_prompt=$(rag_augment_prompt "$PROMPT" "$files_to_review" "$diff_content" "$commit_msg")
+      if [[ -n "$augmented_prompt" ]]; then
+        PROMPT="$augmented_prompt"
+        log_info "RAG: ${GREEN}enabled${NC} (historical context added)"
+      fi
+    fi
+  else
+    log_info "RAG: ${YELLOW}disabled${NC} (--no-rag)"
   fi
 
   # Execute review with timeout and progress feedback
@@ -1465,6 +1535,10 @@ main() {
     run)
       shift
       cmd_run "$@"
+      ;;
+    ask)
+      shift
+      cmd_ask "$@"
       ;;
     install)
       shift
