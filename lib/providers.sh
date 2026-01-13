@@ -232,7 +232,7 @@ execute_github_models() {
                   '{
               model: $model,
               messages: [
-                  { role: "system", content: "You are Guardian Angel a code reviewer." },
+                  { role: "system", content: "You are Guardian Angel, a code reviewer." },
                   { role: "user", content: $prompt }
               ],
               temperature: 0.2
@@ -248,12 +248,6 @@ execute_github_models() {
   echo "$response" | jq -r '.choices[0].message.content'
 }
 
-execute_ollama() {
-  local model="$1"
-  local prompt="$2"
-
-  # Ollama accepts prompt as argument after model name
-  ollama run "$model" "$prompt" 2>&1
 execute_opencode() {
   local model="$1"
   local prompt="$2"
@@ -397,9 +391,9 @@ get_provider_info() {
       echo "OpenAI Codex CLI"
       ;;
     github)
-        local model="${provider#*:}"
-        echo "GitHub Models (model: $model)"
-        ;;
+      local model="${provider#*:}"
+      echo "GitHub Models (model: $model)"
+      ;;
     opencode)
       local model="${provider#*:}"
       if [[ "$model" == "$provider" ]]; then
