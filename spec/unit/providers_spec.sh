@@ -264,6 +264,12 @@ All good!"
       The output should include "llama3.2"
     End
 
+    It 'returns info for github models with model name'
+      When call get_provider_info "github:gpt-4.1"
+      The output should include "GitHub"
+      The output should include "gpt-4.1"
+    End
+
     It 'returns unknown for invalid provider'
       When call get_provider_info "invalid"
       The output should include "Unknown"
@@ -284,6 +290,30 @@ All good!"
       When call validate_provider ""
       The status should be failure
       The output should include "Unknown provider"
+    End
+  End
+
+  Describe 'validate_provider() - github model validation'
+    command() {
+      if [ "$2" = "gh" ]; then return 0; fi
+      builtin command "$@"
+    }
+
+    It 'succeeds when github provider includes a model'
+      When call validate_provider "github:gpt-4.1"
+      The status should be success
+    End
+
+    It 'fails when github provider has no model'
+      When call validate_provider "github"
+      The status should be failure
+      The output should include "GitHub Models requires a model"
+    End
+
+    It 'fails when github provider ends with colon'
+      When call validate_provider "github:"
+      The status should be failure
+      The output should include "GitHub Models requires a model"
     End
   End
 

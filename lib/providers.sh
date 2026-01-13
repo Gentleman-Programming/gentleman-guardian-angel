@@ -6,6 +6,7 @@
 # Handles execution for different AI providers:
 # - claude: Anthropic Claude Code CLI
 # - gemini: Google Gemini CLI
+# - github:<model> GitHub Models with specified model
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
@@ -14,6 +15,9 @@
 # Colors (in case sourced independently)
 RED='\033[0;31m'
 NC='\033[0m'
+
+# Constant Variables
+GITHUB_MODELS_API_ENDPOINT='https://models.inference.ai.azure.com/chat/completions'
 
 # ============================================================================
 # Provider Validation
@@ -56,6 +60,27 @@ validate_provider() {
         echo "  brew install --cask codex"
         echo ""
         return 1
+      fi
+      ;;
+    github)
+      if ! command -v gh &>/dev/null; then
+          echo -e "${RED}❌ GitHub CLI (gh) not found${NC}"
+          echo ""
+          echo "Install GitHub CLI:"
+          echo "  https://cli.github.com/"
+          echo ""
+          return 1
+      fi
+
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+          echo -e "${RED}❌ GitHub Models requires a model${NC}"
+          echo ""
+          echo "Specify model in provider config:"
+          echo "  PROVIDER=\"github:gpt-4.1\""
+          echo "  PROVIDER=\"github:phi-4\""
+          echo ""
+          return 1
       fi
       ;;
     opencode)
@@ -127,6 +152,10 @@ execute_provider() {
     codex)
       execute_codex "$prompt"
       ;;
+    github)
+      local model="${provider#*:}"
+      execute_github_models "$model" "$prompt"
+      ;;
     opencode)
       local model="${provider#*:}"
       if [[ "$model" == "$provider" ]]; then
@@ -171,6 +200,75 @@ execute_codex() {
   # Using --output-last-message to get just the final response
   codex exec "$prompt" 2>&1
   return $?
+}
+
+execute_github_models() {
+  local model="$1"
+  local prompt="$2"
+
+  if ! gh auth status &>/dev/null; then
+      echo -e "${RED}❌ Not authenticated with GitHub${NC}" >&2
+      echo "" >&2
+      echo "Run:" >&2
+      echo "  gh auth login" >&2
+      echo "" >&2
+      return 1
+  fi
+
+  local token
+  token="$(gh auth token 2>/dev/null)"
+
+  if [[ -z "$token" ]]; then
+      echo -e "${RED}❌ Unable to retrieve GitHub auth token${NC}" >&2
+      return 1
+  fi
+
+  local json_payload
+  json_payload=$(jq -n \
+                  --arg model "$model" \
+                  --arg prompt "$prompt" \
+                  '{
+                      model: $model,
+                      messages: [
+                          { role: "system", content: "You are Guardian Angel, a code reviewer." },
+                          { role: "user", content: $prompt }
+                      ],
+                      temperature: 0.2
+                  }')
+
+  local curl_error_file
+  curl_error_file=$(mktemp)
+
+  local response
+  if ! response=$(curl -sS $GITHUB_MODELS_API_ENDPOINT \
+          -H "Authorization: Bearer $token" \
+          -H "Content-Type: application/json" \
+          -d "$json_payload" 2> "$curl_error_file"); then
+      local curl_error_msg
+      curl_error_msg="$(<"$curl_error_file")"
+      rm -f "$curl_error_file"
+      if [[ -n "$curl_error_msg" ]]; then
+          echo -e "${RED}❌ GitHub Models request failed: $curl_error_msg${NC}" >&2
+      else
+          echo -e "${RED}❌ GitHub Models request failed${NC}" >&2
+      fi
+      return 1
+  fi
+
+  rm -f "$curl_error_file"
+  if [[ -z "$response" ]]; then
+      echo -e "${RED}❌ Empty response from GitHub Models${NC}" >&2
+      return 1
+  fi
+
+  if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+      local err_msg
+      err_msg=$(echo "$response" | jq -r '.error.message // "Unknown API error"')
+      echo -e "${RED}❌ API Error: $err_msg${NC}" >&2
+      return 1
+  fi
+
+  echo "$response" | jq -r '.choices[0].message.content'
 }
 
 execute_opencode() {
@@ -314,6 +412,10 @@ get_provider_info() {
       ;;
     codex)
       echo "OpenAI Codex CLI"
+      ;;
+    github)
+      local model="${provider#*:}"
+      echo "GitHub Models (model: $model)"
       ;;
     opencode)
       local model="${provider#*:}"
