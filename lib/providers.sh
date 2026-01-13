@@ -6,7 +6,7 @@
 # Handles execution for different AI providers:
 # - claude: Anthropic Claude Code CLI
 # - gemini: Google Gemini CLI
-# - github:<model> Github Models with specified model
+# - github:<model> GitHub Models with specified model
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
