@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.9.0"
+VERSION="2.10.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -87,6 +87,8 @@ print_help() {
   echo "  init              Create a sample .gga config file"
   echo "  history           Show review history"
   echo "  search <query>    Search past reviews (FTS5)"
+  echo "  predict <file>    Predict issues using Hebbian memory"
+  echo "  memory            Manage Hebbian memory network"
   echo "  cache clear       Clear cache for current project"
   echo "  cache clear-all   Clear all cached data"
   echo "  cache status      Show cache status"
@@ -132,6 +134,9 @@ print_help() {
   echo "  gga history            # Show recent reviews"
   echo "  gga history --limit 10 # Show last 10 reviews"
   echo "  gga search \"sql\"       # Search for reviews mentioning SQL"
+  echo "  gga predict src/auth.ts  # Predict issues for a file"
+  echo "  gga memory show        # Show all associations"
+  echo "  gga memory stats       # Show memory statistics"
   echo "  gga cache status       # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
@@ -925,6 +930,101 @@ cmd_ask() {
   rag_ask "$question"
 }
 
+# ============================================================================
+# Memory Command - Manage Hebbian memory network
+# ============================================================================
+
+cmd_memory() {
+  local subcmd="${1:-help}"
+  shift 2>/dev/null || true
+
+  print_banner
+  load_env_config
+
+  # Source Hebbian module
+  # shellcheck source=lib/hebbiana.sh
+  if ! source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
+    log_error "Hebbian module not available"
+    exit 1
+  fi
+
+  case "$subcmd" in
+    show)
+      local concept="${1:-}"
+      hebbian_show "$concept"
+      ;;
+    stats)
+      hebbian_stats
+      ;;
+    init)
+      log_info "Initializing Hebbian memory tables..."
+      if hebbian_init_schema; then
+        log_success "Hebbian memory initialized"
+      else
+        log_error "Failed to initialize Hebbian memory"
+        exit 1
+      fi
+      ;;
+    check)
+      hebbian_check
+      ;;
+    consolidate)
+      local days="${1:-30}"
+      log_info "Consolidating memory (decay $days days)..."
+      hebbian_decay "$days"
+      ;;
+    help|*)
+      echo -e "${BOLD}Usage:${NC} gga memory <subcommand>"
+      echo ""
+      echo -e "${BOLD}Subcommands:${NC}"
+      echo "  show [concept]    Show associations (all or for a specific concept)"
+      echo "  stats             Show memory statistics"
+      echo "  init              Initialize Hebbian memory tables"
+      echo "  check             Check if memory is available"
+      echo "  consolidate [days] Apply decay and remove weak associations"
+      echo ""
+      echo -e "${BOLD}Examples:${NC}"
+      echo "  gga memory show                    # Show all associations"
+      echo "  gga memory show pattern:security   # Show associations for security"
+      echo "  gga memory stats                   # Show statistics"
+      echo "  gga memory consolidate 30          # Decay 30 days worth"
+      echo ""
+      ;;
+  esac
+}
+
+# ============================================================================
+# Predict Command - Predict issues using Hebbian memory
+# ============================================================================
+
+cmd_predict() {
+  local input="$*"
+
+  if [[ -z "$input" ]]; then
+    log_error "Please provide a file or text to analyze"
+    echo ""
+    echo "Usage: gga predict <file_or_text>"
+    echo ""
+    echo "Examples:"
+    echo "  gga predict src/auth.ts            # Predict issues for a file"
+    echo "  gga predict \"login jwt token auth\" # Predict for text"
+    echo ""
+    exit 1
+  fi
+
+  print_banner
+  load_env_config
+
+  # Source Hebbian module
+  # shellcheck source=lib/hebbiana.sh
+  if ! source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
+    log_error "Hebbian module not available"
+    exit 1
+  fi
+
+  hebbian_predict "$input"
+}
+
 cmd_run() {
   local use_cache=true
   local ci_mode=false
@@ -1263,6 +1363,11 @@ cmd_run() {
     db_save_review "$project_path" "$project_name" "$git_branch" "$git_commit" \
       "$files_list" "$files_count" "$diff_content" "$diff_hash" \
       "$RESULT" "$review_status" "$PROVIDER" "" "$duration_ms" 2>/dev/null || true
+
+    # Learn from review using Hebbian memory (if available)
+    if source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
+      hebbian_learn_from_review "$files_list" "$diff_content" "$RESULT" "$review_status" 2>/dev/null || true
+    fi
   }
 
   # Parse result
@@ -1564,6 +1669,14 @@ main() {
     search)
       shift
       cmd_search "$@"
+      ;;
+    memory)
+      shift
+      cmd_memory "$@"
+      ;;
+    predict)
+      shift
+      cmd_predict "$@"
       ;;
     version|--version|-v)
       print_version
