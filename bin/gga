@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.7.0"
+VERSION="2.8.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -686,11 +686,13 @@ cmd_search() {
   print_banner
   load_env_config
 
-  local query="$1"
+  local query=""
   local limit="${GGA_SEARCH_LIMIT:-20}"
+  local mode="hybrid"  # lexical, semantic, hybrid
+  local alpha="${GGA_SEARCH_ALPHA:-0.5}"
+  local similar_to=""
 
-  # Parse additional arguments
-  shift || true
+  # Parse arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --limit)
@@ -701,20 +703,96 @@ cmd_search() {
         limit="${1#*=}"
         shift
         ;;
+      --mode)
+        mode="$2"
+        shift 2
+        ;;
+      --mode=*)
+        mode="${1#*=}"
+        shift
+        ;;
+      --alpha)
+        alpha="$2"
+        shift 2
+        ;;
+      --alpha=*)
+        alpha="${1#*=}"
+        shift
+        ;;
+      --similar-to)
+        similar_to="$2"
+        shift 2
+        ;;
+      --similar-to=*)
+        similar_to="${1#*=}"
+        shift
+        ;;
+      -*)
+        log_error "Unknown option: $1"
+        exit 1
+        ;;
       *)
+        query="$1"
         shift
         ;;
     esac
   done
 
+  # Handle --similar-to mode (find reviews similar to a given ID)
+  if [[ -n "$similar_to" ]]; then
+    # Check if sqlite3 is available
+    if ! command -v sqlite3 &> /dev/null; then
+      log_error "sqlite3 not found. Search requires sqlite3."
+      exit 1
+    fi
+
+    # Check if database exists
+    if [[ ! -f "$GGA_DB_PATH" ]]; then
+      log_warning "No review history found."
+      exit 0
+    fi
+
+    # Source semantic search
+    # shellcheck source=../lib/semantic.sh
+    source "$LIB_DIR/semantic.sh" 2>/dev/null || {
+      log_error "Semantic search not available"
+      exit 1
+    }
+
+    echo -e "${BOLD}Reviews similar to #${similar_to}:${NC}"
+    echo ""
+
+    local results
+    results=$(find_similar "$similar_to" "$limit")
+
+    if [[ -z "$results" ]]; then
+      log_info "No similar reviews found"
+      exit 0
+    fi
+
+    echo "$results" | while IFS='|' read -r score id status project; do
+      printf "  %.2f | %s | %s | %s\n" "$score" "$id" "$status" "$project"
+    done
+    echo ""
+    exit 0
+  fi
+
   if [[ -z "$query" ]]; then
     log_error "Search query required"
     echo ""
-    echo "Usage: gga search <query> [--limit N]"
+    echo "Usage: gga search <query> [options]"
+    echo ""
+    echo "Options:"
+    echo "  --mode=MODE      Search mode: lexical, semantic, hybrid (default: hybrid)"
+    echo "  --alpha=N        Hybrid balance: 0=semantic, 1=lexical (default: 0.5)"
+    echo "  --limit=N        Maximum results (default: 20)"
+    echo "  --similar-to=ID  Find reviews similar to review ID"
     echo ""
     echo "Examples:"
-    echo "  gga search \"authentication\""
-    echo "  gga search \"sql injection\" --limit 10"
+    echo "  gga search \"authentication\"                 # hybrid search"
+    echo "  gga search --mode=lexical \"sql injection\"   # FTS5 only"
+    echo "  gga search --mode=semantic \"debugging\"      # embedding similarity"
+    echo "  gga search --similar-to 42                   # reviews like #42"
     echo ""
     exit 1
   fi
@@ -735,23 +813,74 @@ cmd_search() {
   fi
 
   echo -e "${BOLD}Search Results for:${NC} $query"
+  echo -e "${DIM}Mode: $mode | Alpha: $alpha | Limit: $limit${NC}"
   echo ""
 
-  # Search reviews
   local results
-  results=$(db_search_reviews "$query" "$limit")
 
-  if [[ -z "$results" || "$results" == "[]" ]]; then
-    log_info "No reviews found matching: $query"
-    exit 0
-  fi
+  case "$mode" in
+    lexical)
+      # Use FTS5 only
+      results=$(db_search_reviews "$query" "$limit")
+      if [[ -z "$results" || "$results" == "[]" ]]; then
+        log_info "No reviews found matching: $query"
+        exit 0
+      fi
+      # Format output (requires jq)
+      if command -v jq &> /dev/null; then
+        echo "$results" | jq -r '.[] | "  \(.id) | \(.status) | \(.project_name) | \(.match_snippet)"'
+      else
+        echo "$results"
+      fi
+      ;;
 
-  # Format output (requires jq)
-  if command -v jq &> /dev/null; then
-    echo "$results" | jq -r '.[] | "  \(.id) | \(.status) | \(.project_name) | \(.match_snippet)"'
-  else
-    echo "$results"
-  fi
+    semantic)
+      # Source semantic search
+      # shellcheck source=../lib/semantic.sh
+      source "$LIB_DIR/semantic.sh" 2>/dev/null || {
+        log_error "Semantic search not available"
+        exit 1
+      }
+      results=$(search_semantic "$query" "$limit")
+      if [[ -z "$results" ]]; then
+        log_info "No reviews found matching: $query"
+        log_info "Note: Semantic search requires reviews with embeddings."
+        exit 0
+      fi
+      echo "$results" | while IFS='|' read -r score id status project; do
+        printf "  %.4f | %s | %s | %s\n" "$score" "$id" "$status" "$project"
+      done
+      ;;
+
+    hybrid|*)
+      # Source semantic search
+      # shellcheck source=../lib/semantic.sh
+      source "$LIB_DIR/semantic.sh" 2>/dev/null || {
+        # Fallback to lexical if semantic not available
+        log_warning "Semantic search not available, using lexical only"
+        results=$(db_search_reviews "$query" "$limit")
+        if [[ -z "$results" || "$results" == "[]" ]]; then
+          log_info "No reviews found matching: $query"
+          exit 0
+        fi
+        if command -v jq &> /dev/null; then
+          echo "$results" | jq -r '.[] | "  \(.id) | \(.status) | \(.project_name) | \(.match_snippet)"'
+        else
+          echo "$results"
+        fi
+        exit 0
+      }
+      results=$(search_hybrid "$query" "$alpha" "$limit")
+      if [[ -z "$results" ]]; then
+        log_info "No reviews found matching: $query"
+        exit 0
+      fi
+      echo "$results" | while IFS='|' read -r score id status project snippet; do
+        printf "  %.4f | %s | %s | %s | %s\n" "$score" "$id" "$status" "$project" "${snippet:0:50}"
+      done
+      ;;
+  esac
+
   echo ""
 }
 
