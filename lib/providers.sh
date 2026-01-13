@@ -204,11 +204,11 @@ execute_github_models() {
   local prompt="$2"
 
   if ! gh auth status &>/dev/null; then
-      echo -e "${RED}❌ Not authenticated with GitHub${NC}"
-      echo ""
-      echo "Run:"
-      echo "  gh auth login"
-      echo ""
+      echo -e "${RED}❌ Not authenticated with GitHub${NC}" >&2
+      echo "" >&2
+      echo "Run:" >&2
+      echo "  gh auth login" >&2
+      echo "" >&2
       return 1
   fi
 
@@ -216,32 +216,41 @@ execute_github_models() {
   token="$(gh auth token 2>/dev/null)"
 
   if [[ -z "$token" ]]; then
-      echo -e "${RED}❌ Unable to retrieve GitHub auth token${NC}"
+      echo -e "${RED}❌ Unable to retrieve GitHub auth token${NC}" >&2
       return 1
   fi
 
-  local response
-  response=$(
-      curl -sS https://models.inference.ai.azure.com/chat/completions \
-          -H "Authorization: Bearer $token" \
-          -H "Content-Type: application/json" \
-          -d "$(
-              jq -n \
+  local json_payload
+  json_payload=$(jq -n \
                   --arg model "$model" \
                   --arg prompt "$prompt" \
                   '{
-              model: $model,
-              messages: [
-                  { role: "system", content: "You are Guardian Angel, a code reviewer." },
-                  { role: "user", content: $prompt }
-              ],
-              temperature: 0.2
-          }'
-          )"
-  )
+                      model: $model,
+                      messages: [
+                          { role: "system", content: "You are Guardian Angel, a code reviewer." },
+                          { role: "user", content: $prompt }
+                      ],
+                      temperature: 0.2
+                  }')
 
-  if [[ $? -ne 0 || -z "$response" ]]; then
-      echo -e "${RED}❌ GitHub Models request failed${NC}"
+  local response
+  if ! response=$(curl -sS https://models.inference.ai.azure.com/chat/completions \
+          -H "Authorization: Bearer $token" \
+          -H "Content-Type: application/json" \
+          -d "$json_payload"); then
+      echo -e "${RED}❌ GitHub Models request failed${NC}" >&2
+      return 1
+  fi
+
+  if [[ -z "$response" ]]; then
+      echo -e "${RED}❌ Empty response from GitHub Models${NC}" >&2
+      return 1
+  fi
+
+  if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+      local err_msg
+      err_msg=$(echo "$response" | jq -r '.error.message // "Unknown API error"')
+      echo -e "${RED}❌ API Error: $err_msg${NC}" >&2
       return 1
   fi
 

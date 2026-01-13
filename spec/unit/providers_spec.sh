@@ -294,6 +294,11 @@ All good!"
   End
 
   Describe 'validate_provider() - github model validation'
+    command() {
+      if [ "$2" = "gh" ]; then return 0; fi
+      builtin command "$@"
+    }
+
     It 'succeeds when github provider includes a model'
       When call validate_provider "github:gpt-4.1"
       The status should be success
