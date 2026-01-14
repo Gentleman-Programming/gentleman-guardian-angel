@@ -8,6 +8,41 @@
 # ============================================================================
 
 # ============================================================================
+# SQL Security Helpers
+# ============================================================================
+
+# Escape string for safe SQL interpolation
+# Handles single quotes and other potentially dangerous characters
+_sql_escape() {
+    local str="$1"
+    # Escape single quotes by doubling them (SQL standard)
+    str="${str//\'/\'\'}"
+    # Remove null bytes which can cause issues
+    str="${str//$'\0'/}"
+    printf '%s' "$str"
+}
+
+# Validate that a value is a positive integer
+_sql_validate_int() {
+    local val="$1"
+    local default="${2:-0}"
+    if [[ "$val" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$val"
+    else
+        printf '%s' "$default"
+    fi
+}
+
+# Validate status is one of allowed values
+_sql_validate_status() {
+    local status="$1"
+    case "$status" in
+        PASSED|FAILED|ERROR|UNKNOWN) printf '%s' "$status" ;;
+        *) printf '%s' "UNKNOWN" ;;
+    esac
+}
+
+# ============================================================================
 # Database Initialization
 # ============================================================================
 
@@ -83,27 +118,25 @@ SQL
 # Usage: db_save_review "project_path" "project_name" "branch" "commit" "files" count "diff" "diff_hash" "result" "status" "provider" "model" duration_ms
 db_save_review() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
-    local project_path="$1"
-    local project_name="$2"
-    local git_branch="$3"
-    local git_commit="$4"
-    local files="$5"
-    local files_count="$6"
-    local diff_content="$7"
-    local diff_hash="$8"
-    local result="$9"
-    local status="${10}"
-    local provider="${11}"
-    local model="${12:-}"
-    local duration_ms="${13:-0}"
 
-    # Escape single quotes for SQL
-    project_path="${project_path//\'/\'\'}"
-    project_name="${project_name//\'/\'\'}"
-    git_branch="${git_branch//\'/\'\'}"
-    files="${files//\'/\'\'}"
-    diff_content="${diff_content//\'/\'\'}"
-    result="${result//\'/\'\'}"
+    # Sanitize all string inputs
+    local project_path project_name git_branch git_commit files diff_content diff_hash result status provider model
+    project_path=$(_sql_escape "$1")
+    project_name=$(_sql_escape "$2")
+    git_branch=$(_sql_escape "$3")
+    git_commit=$(_sql_escape "$4")
+    files=$(_sql_escape "$5")
+    diff_content=$(_sql_escape "$7")
+    diff_hash=$(_sql_escape "$8")
+    result=$(_sql_escape "$9")
+    provider=$(_sql_escape "${11}")
+    model=$(_sql_escape "${12:-}")
+
+    # Validate numeric and enum inputs
+    local files_count duration_ms
+    files_count=$(_sql_validate_int "$6" 0)
+    duration_ms=$(_sql_validate_int "${13}" 0)
+    status=$(_sql_validate_status "${10}")
 
     sqlite3 "$db_path" <<SQL
 INSERT OR REPLACE INTO reviews (
@@ -122,15 +155,17 @@ SQL
 # Usage: db_get_reviews [limit] [status] [project]
 db_get_reviews() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
-    local limit="${1:-50}"
-    local status_filter="${2:-}"
-    local project_filter="${3:-}"
+    local limit status_filter project_filter
+
+    limit=$(_sql_validate_int "${1:-50}" 50)
 
     local where_clause=""
-    if [[ -n "$status_filter" ]]; then
+    if [[ -n "$2" ]]; then
+        status_filter=$(_sql_validate_status "$2")
         where_clause="WHERE status = '$status_filter'"
     fi
-    if [[ -n "$project_filter" ]]; then
+    if [[ -n "$3" ]]; then
+        project_filter=$(_sql_escape "$3")
         if [[ -n "$where_clause" ]]; then
             where_clause="$where_clause AND project_name = '$project_filter'"
         else
@@ -151,7 +186,10 @@ SQL
 # Get a single review by ID
 db_get_review() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
-    local review_id="$1"
+    local review_id
+
+    review_id=$(_sql_validate_int "$1" 0)
+    [[ "$review_id" -eq 0 ]] && return 1
 
     sqlite3 -json "$db_path" <<SQL
 SELECT * FROM reviews WHERE id = $review_id;
@@ -166,11 +204,13 @@ SQL
 # Usage: db_search_reviews "query" [limit]
 db_search_reviews() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
-    local query="$1"
-    local limit="${2:-20}"
+    local query limit
 
-    # Escape single quotes
-    query="${query//\'/\'\'}"
+    # Escape for SQL and sanitize FTS5 special chars
+    query=$(_sql_escape "$1")
+    # Escape FTS5 operators that could cause issues (basic protection)
+    query="${query//\"/\\\"}"
+    limit=$(_sql_validate_int "${2:-20}" 20)
 
     local result
     result=$(sqlite3 -json "$db_path" <<SQL
@@ -196,8 +236,10 @@ SQL
 # Search by status
 db_search_by_status() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
-    local status="$1"
-    local limit="${2:-20}"
+    local status limit
+
+    status=$(_sql_validate_status "$1")
+    limit=$(_sql_validate_int "${2:-20}" 20)
 
     sqlite3 -json "$db_path" <<SQL
 SELECT id, created_at, project_name, files_count,
@@ -253,7 +295,9 @@ SQL
 # Delete old reviews (keep last N per project)
 db_cleanup() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
-    local keep="${1:-100}"
+    local keep
+
+    keep=$(_sql_validate_int "${1:-100}" 100)
 
     sqlite3 "$db_path" <<SQL
 DELETE FROM reviews

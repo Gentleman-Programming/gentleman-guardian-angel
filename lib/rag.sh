@@ -190,10 +190,10 @@ rag_build_context() {
         pct=$(awk -v s="$score" 'BEGIN { printf "%.0f", s * 100 }')
 
         context+="
-### Review #$review_num (Relevancia: ${pct}%)
-- **Estado:** $status
-- **Archivos:** $files
-- **Hallazgos:** $result
+### Review #$review_num (Relevance: ${pct}%)
+- **Status:** $status
+- **Files:** $files
+- **Findings:** $result
 ---"
     done <<< "$retrieved"
 
@@ -245,16 +245,16 @@ rag_augment_prompt() {
 $original_prompt
 
 ---
-## Contexto Historico del Proyecto
+## Project Historical Context
 
-Las siguientes son reviews anteriores relevantes para el codigo actual:
+The following are previous reviews relevant to the current code:
 $context
 
-**Instrucciones adicionales:**
-- Considera este contexto historico al revisar el codigo
-- Si encuentras patrones similares a problemas anteriores, mencionalos
-- Mantiene consistencia con decisiones y soluciones pasadas
-- Aplica lecciones aprendidas de reviews anteriores
+**Additional instructions:**
+- Consider this historical context when reviewing the code
+- If you find patterns similar to previous issues, mention them
+- Maintain consistency with past decisions and solutions
+- Apply lessons learned from previous reviews
 EOF
 }
 
@@ -271,12 +271,12 @@ rag_ask() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
 
     [[ -z "$question" ]] && {
-        echo "Uso: gga ask \"tu pregunta\"" >&2
+        echo "Usage: gga ask \"your question\"" >&2
         return 1
     }
 
     [[ ! -f "$db_path" ]] && {
-        echo "No hay historial de reviews. Ejecuta 'gga run' primero." >&2
+        echo "No review history. Run 'gga run' first." >&2
         return 1
     }
 
@@ -285,7 +285,7 @@ rag_ask() {
     retrieved=$(rag_retrieve "$question" "$project" 10)
 
     [[ -z "$retrieved" ]] && {
-        echo "No se encontro contexto historico relevante para tu pregunta."
+        echo "No relevant historical context found for your question."
         return 0
     }
 
@@ -295,14 +295,14 @@ rag_ask() {
 
     # Return formatted response (actual LLM call would be in CLI)
     cat <<EOF
-## Contexto Relevante del Historial
+## Relevant Historical Context
 
-Basado en tu pregunta: "$question"
+Based on your question: "$question"
 
-Se encontraron las siguientes reviews relacionadas:
+The following related reviews were found:
 $context
 
-Para obtener una respuesta detallada, usa un proveedor AI:
+For a detailed answer, use an AI provider:
   GGA_PROVIDER=claude gga ask "$question"
 EOF
 }
@@ -318,12 +318,12 @@ rag_check() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
 
     [[ "$RAG_ENABLED" != "true" ]] && {
-        echo "RAG deshabilitado (GGA_RAG_ENABLED=false)"
+        echo "RAG disabled (GGA_RAG_ENABLED=false)"
         return 1
     }
 
     [[ ! -f "$db_path" ]] && {
-        echo "Base de datos no encontrada: $db_path"
+        echo "Database not found: $db_path"
         return 1
     }
 
@@ -331,11 +331,11 @@ rag_check() {
     count=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM reviews;" 2>/dev/null | tr -d '\r')
 
     if [[ -z "$count" || $count -lt 3 ]]; then
-        echo "Historial insuficiente: $count reviews (minimo: 3)"
+        echo "Insufficient history: $count reviews (minimum: 3)"
         return 1
     fi
 
-    echo "RAG disponible: $count reviews en historial"
+    echo "RAG available: $count reviews in history"
     return 0
 }
 
@@ -345,7 +345,7 @@ rag_stats() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
 
     [[ ! -f "$db_path" ]] && {
-        echo "No hay base de datos"
+        echo "No database found"
         return 1
     }
 

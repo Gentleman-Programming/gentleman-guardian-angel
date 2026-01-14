@@ -50,6 +50,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m' # No Color
 
 # Defaults
@@ -353,7 +354,8 @@ cmd_install() {
 
   # Parse arguments to determine hook type
   local hook_type="pre-commit"  # default
-  
+  local arg
+
   for arg in "$@"; do
     case "$arg" in
       --commit-msg)
@@ -1025,6 +1027,50 @@ cmd_predict() {
   hebbian_predict "$input"
 }
 
+# Save review results to SQLite database and trigger Hebbian learning
+# Parameters: review_status files_to_review result provider duration_ms
+_save_review_to_db() {
+  local review_status="$1"
+  local files_to_review="$2"
+  local result="$3"
+  local provider="$4"
+  local duration_ms="$5"
+
+  # Only save if sqlite3 is available
+  command -v sqlite3 &> /dev/null || return 0
+
+  # Initialize database if needed
+  load_env_config
+  db_init > /dev/null 2>&1 || return 0
+
+  # Get project info
+  local project_path project_name git_branch git_commit
+  project_path=$(pwd)
+  project_name=$(basename "$project_path")
+  git_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  git_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+
+  # Build files list and count
+  local files_list files_count
+  files_list=$(echo "$files_to_review" | tr '\n' ',' | sed 's/,$//')
+  files_count=$(echo "$files_to_review" | grep -c . || echo "0")
+
+  # Generate diff hash for deduplication
+  local diff_content diff_hash
+  diff_content=$(git diff --cached 2>/dev/null || echo "")
+  diff_hash=$(echo "$diff_content" | _compute_hash_stdin 2>/dev/null || echo "")
+
+  # Save to database
+  db_save_review "$project_path" "$project_name" "$git_branch" "$git_commit" \
+    "$files_list" "$files_count" "$diff_content" "$diff_hash" \
+    "$result" "$review_status" "$provider" "" "$duration_ms" 2>/dev/null || true
+
+  # Learn from review using Hebbian memory (if available)
+  if source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
+    hebbian_learn_from_review "$files_list" "$diff_content" "$result" "$review_status" 2>/dev/null || true
+  fi
+}
+
 cmd_run() {
   local use_cache=true
   local ci_mode=false
@@ -1032,6 +1078,7 @@ cmd_run() {
   local diff_only=false
   local use_rag=true
   local commit_msg_file=""
+  local arg
 
   # Parse arguments
   for arg in "$@"; do
@@ -1331,45 +1378,6 @@ cmd_run() {
   end_time=$(date +%s%3N 2>/dev/null || date +%s)000
   duration_ms=$((end_time - start_time))
 
-  # Helper function to save review to SQLite
-  save_review_to_db() {
-    local review_status="$1"
-
-    # Only save if sqlite3 is available
-    command -v sqlite3 &> /dev/null || return 0
-
-    # Initialize database if needed
-    load_env_config
-    db_init > /dev/null 2>&1 || return 0
-
-    # Get project info
-    local project_path project_name git_branch git_commit
-    project_path=$(pwd)
-    project_name=$(basename "$project_path")
-    git_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-    git_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "")
-
-    # Build files list and count
-    local files_list files_count
-    files_list=$(echo "$files_to_review" | tr '\n' ',' | sed 's/,$//')
-    files_count=$(echo "$files_to_review" | grep -c . || echo "0")
-
-    # Generate diff hash for deduplication
-    local diff_content diff_hash
-    diff_content=$(git diff --cached 2>/dev/null || echo "")
-    diff_hash=$(echo "$diff_content" | _compute_hash_stdin 2>/dev/null || echo "")
-
-    # Save to database
-    db_save_review "$project_path" "$project_name" "$git_branch" "$git_commit" \
-      "$files_list" "$files_count" "$diff_content" "$diff_hash" \
-      "$RESULT" "$review_status" "$PROVIDER" "" "$duration_ms" 2>/dev/null || true
-
-    # Learn from review using Hebbian memory (if available)
-    if source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
-      hebbian_learn_from_review "$files_list" "$diff_content" "$RESULT" "$review_status" 2>/dev/null || true
-    fi
-  }
-
   # Parse result
   # Search for STATUS in the first 15 lines to handle AI responses that include
   # preamble text (e.g., instruction acknowledgments, markdown formatting)
@@ -1383,13 +1391,13 @@ cmd_run() {
       cache_files_passed "$files_to_review"
     fi
     # Save to history
-    save_review_to_db "PASSED"
+    _save_review_to_db "PASSED" "$files_to_review" "$RESULT" "$PROVIDER" "$duration_ms"
     log_success "CODE REVIEW PASSED"
     echo ""
     exit 0
   elif echo "$status_check" | grep -q "STATUS: FAILED"; then
     # Save to history
-    save_review_to_db "FAILED"
+    _save_review_to_db "FAILED" "$files_to_review" "$RESULT" "$PROVIDER" "$duration_ms"
     log_error "CODE REVIEW FAILED"
     echo ""
     echo "Fix the violations listed above before committing."
@@ -1398,7 +1406,7 @@ cmd_run() {
   else
     log_warning "Could not determine review status"
     # Save to history with UNKNOWN status
-    save_review_to_db "UNKNOWN"
+    _save_review_to_db "UNKNOWN" "$files_to_review" "$RESULT" "$PROVIDER" "$duration_ms"
     if [[ "$STRICT_MODE" == "true" ]]; then
       log_error "STRICT MODE: Failing due to ambiguous response"
       echo ""
@@ -1418,41 +1426,46 @@ cmd_run() {
 # Utility Functions
 # ============================================================================
 
-get_staged_files() {
-  local file_patterns="$1"
-  local file_excludes="$2"
+# Trim whitespace from string using bash builtins (avoids spawning xargs)
+_trim() {
+  local var="$1"
+  var="${var#"${var%%[![:space:]]*}"}"  # trim leading
+  var="${var%"${var##*[![:space:]]}"}"  # trim trailing
+  printf '%s' "$var"
+}
 
-  # Get all staged files (added, copied, modified)
-  local staged
-  staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
+# Filter files by include/exclude patterns
+# Usage: _filter_files_by_patterns "file_list" "include_patterns" "exclude_patterns" [check_exists]
+_filter_files_by_patterns() {
+  local files="$1"
+  local file_patterns="$2"
+  local file_excludes="$3"
+  local check_exists="${4:-false}"
 
-  if [[ -z "$staged" ]]; then
-    return
-  fi
+  [[ -z "$files" ]] && return
 
-  # Convert comma-separated patterns to array
-  IFS=',' read -ra PATTERN_ARRAY <<< "$file_patterns"
-  IFS=',' read -ra EXCLUDE_ARRAY <<< "$file_excludes"
+  # Convert comma-separated patterns to arrays
+  local -a pattern_array exclude_array
+  IFS=',' read -ra pattern_array <<< "$file_patterns"
+  IFS=',' read -ra exclude_array <<< "$file_excludes"
 
-  # Filter files
-  echo "$staged" | while IFS= read -r file; do
+  echo "$files" | while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+
     local match=false
     local excluded=false
+    local pattern suffix
 
     # Check if file matches any include pattern
-    for pattern in "${PATTERN_ARRAY[@]}"; do
-      pattern=$(echo "$pattern" | xargs) # trim whitespace
-      # Convert glob pattern to regex-like suffix match
-      # *.tsx -> check if file ends with .tsx
+    for pattern in "${pattern_array[@]}"; do
+      pattern=$(_trim "$pattern")
       if [[ "$pattern" == \** ]]; then
-        # Pattern starts with *, so match suffix
-        local suffix="${pattern#\*}"
+        suffix="${pattern#\*}"
         if [[ "$file" == *"$suffix" ]]; then
           match=true
           break
         fi
       else
-        # Exact match or other pattern
         # shellcheck disable=SC2053
         if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
           match=true
@@ -1462,12 +1475,11 @@ get_staged_files() {
     done
 
     # Check if file matches any exclude pattern
-    if [[ "$match" == true && -n "$excludes" ]]; then
-      for pattern in "${EXCLUDE_ARRAY[@]}"; do
-        pattern=$(echo "$pattern" | xargs) # trim whitespace
-        # Convert glob pattern to regex-like suffix match
+    if [[ "$match" == true && -n "$file_excludes" ]]; then
+      for pattern in "${exclude_array[@]}"; do
+        pattern=$(_trim "$pattern")
         if [[ "$pattern" == \** ]]; then
-          local suffix="${pattern#\*}"
+          suffix="${pattern#\*}"
           if [[ "$file" == *"$suffix" ]]; then
             excluded=true
             break
@@ -1482,10 +1494,26 @@ get_staged_files() {
       done
     fi
 
+    # Output matching file
     if [[ "$match" == true && "$excluded" == false ]]; then
-      echo "$file"
+      if [[ "$check_exists" == true ]]; then
+        [[ -f "$file" ]] && echo "$file"
+      else
+        echo "$file"
+      fi
     fi
   done
+}
+
+get_staged_files() {
+  local file_patterns="$1"
+  local file_excludes="$2"
+
+  # Get all staged files (added, copied, modified)
+  local staged
+  staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
+
+  _filter_files_by_patterns "$staged" "$file_patterns" "$file_excludes" false
 }
 
 get_ci_files() {

@@ -18,6 +18,18 @@ HEBBIAN_SPREAD_ITERATIONS="${GGA_HEBBIAN_SPREAD_ITERATIONS:-3}"
 HEBBIAN_SPREAD_DECAY="${GGA_HEBBIAN_SPREAD_DECAY:-0.5}"
 
 # ============================================================================
+# SQL Security Helpers
+# ============================================================================
+
+# Escape string for safe SQL interpolation
+_hebb_sql_escape() {
+    local str="$1"
+    str="${str//\'/\'\'}"
+    str="${str//$'\0'/}"
+    printf '%s' "$str"
+}
+
+# ============================================================================
 # Schema Initialization
 # ============================================================================
 
@@ -136,14 +148,22 @@ hebbian_update_association() {
         concept_b="$tmp"
     fi
 
+    # Sanitize inputs for SQL
+    local safe_concept_a safe_concept_b safe_context concept_a_type concept_b_type
+    safe_concept_a=$(_hebb_sql_escape "$concept_a")
+    safe_concept_b=$(_hebb_sql_escape "$concept_b")
+    safe_context=$(_hebb_sql_escape "$context")
+    concept_a_type=$(_hebb_sql_escape "${concept_a%%:*}")
+    concept_b_type=$(_hebb_sql_escape "${concept_b%%:*}")
+
     local now current_weight
     now=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
 
     # Get current weight
     current_weight=$(sqlite3 "$db_path" \
         "SELECT weight FROM associations
-         WHERE concept_a='$concept_a' AND concept_b='$concept_b'
-         AND context='$context';" 2>/dev/null | tr -d '\r')
+         WHERE concept_a='$safe_concept_a' AND concept_b='$safe_concept_b'
+         AND context='$safe_context';" 2>/dev/null | tr -d '\r')
     current_weight="${current_weight:-0.5}"
 
     # Hebbian rule: delta_w = learning_rate * activation_a * activation_b
@@ -156,7 +176,7 @@ hebbian_update_association() {
     # Upsert association
     sqlite3 "$db_path" <<SQL
 INSERT INTO associations (concept_a, concept_b, weight, context, last_updated)
-VALUES ('$concept_a', '$concept_b', $new_weight, '$context', '$now')
+VALUES ('$safe_concept_a', '$safe_concept_b', $new_weight, '$safe_context', '$now')
 ON CONFLICT(concept_a, concept_b, context) DO UPDATE SET
     weight = $new_weight,
     co_occurrences = co_occurrences + 1,
@@ -166,11 +186,11 @@ SQL
     # Update concept frequencies
     sqlite3 "$db_path" <<SQL
 INSERT INTO concepts (id, type, frequency, last_seen)
-VALUES ('$concept_a', '${concept_a%%:*}', 1, '$now')
+VALUES ('$safe_concept_a', '$concept_a_type', 1, '$now')
 ON CONFLICT(id) DO UPDATE SET frequency = frequency + 1, last_seen = '$now';
 
 INSERT INTO concepts (id, type, frequency, last_seen)
-VALUES ('$concept_b', '${concept_b%%:*}', 1, '$now')
+VALUES ('$safe_concept_b', '$concept_b_type', 1, '$now')
 ON CONFLICT(id) DO UPDATE SET frequency = frequency + 1, last_seen = '$now';
 SQL
 }
