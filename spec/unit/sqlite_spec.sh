@@ -218,6 +218,223 @@ Describe 'sqlite.sh'
     End
   End
 
+  Describe 'db_get_review()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      # Insert test data
+      db_save_review "/path1" "project1" "main" "abc123" \
+        "auth.ts,login.ts" 2 "diff content here" "hash1" \
+        "Security issue found in auth" "FAILED" "claude" "claude-3" 1500
+      db_save_review "/path2" "project2" "dev" "def456" \
+        "api.ts" 1 "api diff" "hash2" \
+        "All good" "PASSED" "gemini" "" 1000
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'returns single review by ID'
+      When call db_get_review 1
+      The output should include "project1"
+      The output should include "FAILED"
+      The output should include "auth.ts"
+    End
+
+    It 'returns correct review for second ID'
+      When call db_get_review 2
+      The output should include "project2"
+      The output should include "PASSED"
+      The output should include "api.ts"
+    End
+
+    It 'returns empty array for non-existent ID'
+      When call db_get_review 999
+      The output should eq "[]"
+    End
+
+    It 'returns full review data including diff_content'
+      When call db_get_review 1
+      The output should include "diff content here"
+      The output should include "Security issue found"
+    End
+  End
+
+  Describe 'db_search_by_status()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      # Insert test data with different statuses
+      db_save_review "/p1" "auth-service" "main" "a1" \
+        "auth.ts" 1 "d1" "h1" "Passed review" "PASSED" "claude" "" 100
+      db_save_review "/p2" "api-service" "main" "a2" \
+        "api.ts" 1 "d2" "h2" "Found issues" "FAILED" "claude" "" 200
+      db_save_review "/p3" "db-service" "main" "a3" \
+        "db.ts" 1 "d3" "h3" "Also passed" "PASSED" "gemini" "" 300
+      db_save_review "/p4" "error-service" "main" "a4" \
+        "error.ts" 1 "d4" "h4" "Error occurred" "ERROR" "claude" "" 400
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'returns only PASSED reviews'
+      When call db_search_by_status "PASSED"
+      The output should include "auth-service"
+      The output should include "db-service"
+      The output should not include "api-service"
+      The output should not include "error-service"
+    End
+
+    It 'returns only FAILED reviews'
+      When call db_search_by_status "FAILED"
+      The output should include "api-service"
+      The output should not include "auth-service"
+      The output should not include "db-service"
+    End
+
+    It 'returns only ERROR reviews'
+      When call db_search_by_status "ERROR"
+      The output should include "error-service"
+      The output should not include "auth-service"
+    End
+
+    It 'respects limit parameter'
+      When call db_search_by_status "PASSED" 1
+      The status should be success
+      The output should be defined
+    End
+
+    It 'returns empty array for status with no matches'
+      When call db_search_by_status "UNKNOWN"
+      The output should eq "[]"
+    End
+  End
+
+  Describe 'db_stats_by_project()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      # Insert test data for multiple projects
+      db_save_review "/p1" "frontend" "main" "a1" "f.ts" 1 "d" "h1" "r" "PASSED" "claude" "" 100
+      db_save_review "/p2" "frontend" "main" "a2" "f.ts" 1 "d" "h2" "r" "PASSED" "claude" "" 200
+      db_save_review "/p3" "frontend" "main" "a3" "f.ts" 1 "d" "h3" "r" "FAILED" "claude" "" 300
+      db_save_review "/p4" "backend" "main" "a4" "f.ts" 1 "d" "h4" "r" "PASSED" "gemini" "" 400
+      db_save_review "/p5" "backend" "main" "a5" "f.ts" 1 "d" "h5" "r" "FAILED" "gemini" "" 500
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'returns stats grouped by project'
+      When call db_stats_by_project
+      The output should include "frontend"
+      The output should include "backend"
+    End
+
+    It 'includes review counts per project'
+      When call db_stats_by_project
+      The output should include "review_count"
+    End
+
+    It 'includes passed/failed counts'
+      When call db_stats_by_project
+      The output should include "passed"
+      The output should include "failed"
+    End
+
+    It 'returns JSON format'
+      When call db_stats_by_project
+      The output should start with "["
+    End
+  End
+
+  Describe 'db_cleanup()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      # Insert many reviews for same project
+      local i
+      for i in 1 2 3 4 5; do
+        db_save_review "/p$i" "project-a" "main" "a$i" "f.ts" 1 "d" "h$i" "r" "PASSED" "claude" "" 100
+      done
+      # Insert reviews for another project
+      for i in 6 7 8; do
+        db_save_review "/p$i" "project-b" "main" "a$i" "f.ts" 1 "d" "h$i" "r" "PASSED" "claude" "" 100
+      done
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'keeps specified number of reviews per project'
+      # Before cleanup: 5 reviews for project-a, 3 for project-b
+      count_before=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      Assert [ "$count_before" = "8" ]
+
+      When call db_cleanup 2
+      The status should be success
+
+      # After cleanup: 2 reviews for project-a, 2 for project-b
+      count_after=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      Assert [ "$count_after" = "4" ]
+    End
+
+    It 'keeps most recent reviews'
+      db_cleanup 1
+      # Should keep the last review for each project
+      count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      The value "$count" should eq "2"
+    End
+
+    It 'does nothing when keep is larger than total'
+      When call db_cleanup 100
+      The status should be success
+      count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      The value "$count" should eq "8"
+    End
+
+    It 'uses default keep value of 100'
+      When call db_cleanup
+      The status should be success
+      # With only 8 reviews, nothing should be deleted
+      count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      The value "$count" should eq "8"
+    End
+  End
+
   Describe 'db_check()'
     Skip if "sqlite3 not installed" no_sqlite3
 

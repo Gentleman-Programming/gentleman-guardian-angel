@@ -333,6 +333,107 @@ Describe 'hebbiana.sh'
     End
   End
 
+  Describe 'hebbian_spread_activation()'
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      sqlite3 "$GGA_DB_PATH" "CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY);"
+      hebbian_init_schema >/dev/null 2>&1
+      # Create test network
+      sqlite3 "$GGA_DB_PATH" "INSERT INTO associations (concept_a, concept_b, weight, context) VALUES
+        ('pattern:auth', 'pattern:security', 0.9, 'review'),
+        ('pattern:security', 'pattern:validation', 0.8, 'review'),
+        ('pattern:auth', 'file:login.ts', 0.7, 'review');"
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'spreads activation to neighbors'
+      local initial=$'pattern:auth'
+      When call hebbian_spread_activation "$initial" 1 0.5
+      The output should include "pattern:security"
+      The output should include "file:login.ts"
+    End
+
+    It 'returns failure with empty input'
+      When call hebbian_spread_activation ""
+      The status should be failure
+    End
+
+    It 'returns failure without database'
+      export GGA_DB_PATH="/nonexistent/path/db.db"
+      When call hebbian_spread_activation "pattern:auth"
+      The status should be failure
+    End
+
+    It 'accumulates activation over multiple iterations'
+      local initial=$'pattern:auth'
+      When call hebbian_spread_activation "$initial" 2 0.5
+      The status should be success
+      # Should reach pattern:validation through pattern:security
+      The output should include "pattern:validation"
+    End
+
+    It 'outputs activation scores with concepts'
+      local initial=$'pattern:auth'
+      When call hebbian_spread_activation "$initial" 1 0.5
+      # Output format should be "score|concept"
+      The output should match pattern "*|*"
+    End
+  End
+
+  Describe 'hebbian_show()'
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      sqlite3 "$GGA_DB_PATH" "CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY);"
+      hebbian_init_schema >/dev/null 2>&1
+      sqlite3 "$GGA_DB_PATH" "INSERT INTO associations (concept_a, concept_b, weight, context) VALUES
+        ('pattern:auth', 'pattern:security', 0.9, 'review'),
+        ('pattern:auth', 'pattern:validation', 0.7, 'review'),
+        ('pattern:database', 'pattern:security', 0.6, 'review');"
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'shows associations for specific concept'
+      When call hebbian_show "pattern:auth"
+      The output should include "Associations for: pattern:auth"
+      The output should include "pattern:security"
+      The output should include "pattern:validation"
+    End
+
+    It 'shows all associations when no concept specified'
+      When call hebbian_show
+      The output should include "All associations"
+      The output should include "pattern:auth"
+      The output should include "pattern:database"
+    End
+
+    It 'returns failure without database'
+      export GGA_DB_PATH="/nonexistent/path/db.db"
+      When call hebbian_show
+      The status should be failure
+      The output should include "No database"
+    End
+
+    It 'shows weights in output'
+      When call hebbian_show "pattern:auth"
+      # Should show weight values
+      The output should match pattern "*0.*"
+    End
+  End
+
   Describe 'hebbian_learn_from_review()'
     setup() {
       TEMP_DIR=$(mktemp -d)
@@ -360,6 +461,21 @@ Describe 'hebbiana.sh'
       export HEBBIAN_ENABLED="false"
       When call hebbian_learn_from_review "auth.ts" "login jwt" "result" "PASSED"
       The status should be success
+    End
+
+    It 'adds status as a concept'
+      When call hebbian_learn_from_review "auth.ts" "login" "result" "FAILED"
+      The status should be success
+      local has_status=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM concepts WHERE id='status:FAILED';")
+      Assert [ "$has_status" -gt 0 ]
+    End
+
+    It 'creates associations between files and patterns'
+      When call hebbian_learn_from_review "auth.ts" "login jwt token validation" "Security passed" "PASSED"
+      The status should be success
+      # Should have associations between file:auth.ts and patterns
+      local count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM associations WHERE concept_a LIKE 'file:%' OR concept_b LIKE 'file:%';")
+      Assert [ "$count" -gt 0 ]
     End
   End
 End

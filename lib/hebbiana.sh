@@ -275,6 +275,7 @@ hebbian_spread_activation() {
     # Use temporary file to store activations (bash associative arrays are slow)
     local tmp_file
     tmp_file=$(mktemp)
+    # shellcheck disable=SC2064 # We want $tmp_file to expand now, not at signal time
     trap "rm -f '$tmp_file'" RETURN
 
     # Initialize activations
@@ -375,6 +376,7 @@ hebbian_predict() {
 
     echo ""
     echo "Detected concepts:"
+    # shellcheck disable=SC2001 # sed is cleaner for multi-line prefix addition
     echo "$concepts" | sed 's/^/  - /'
     echo ""
 
