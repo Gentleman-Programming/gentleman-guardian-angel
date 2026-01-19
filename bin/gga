@@ -84,11 +84,13 @@ print_help() {
   echo "  version           Show version"
   echo ""
   echo -e "${BOLD}RUN OPTIONS:${NC}"
-  echo "  --no-cache        Force review all files, ignoring cache"
+echo "  --no-cache        Force review all files, ignoring cache"
   echo "  --ci              CI mode: review files changed in last commit (HEAD~1..HEAD)"
   echo "                    Use this in GitLab CI, GitHub Actions, etc."
-  echo "  --pr-mode         PR mode: review all files changed in the full PR range"
+  echo "  --pr-mode         PR mode: review all files changed in full PR range"
   echo "                    Automatically detects base branch (main/master/develop)"
+  echo "  --diff-only       Show only diffs (must be used with --pr-mode)"
+  echo "                    More focused review, cheaper and faster"
   echo ""
   echo -e "${BOLD}CONFIGURATION:${NC}"
   echo "  Create a ${CYAN}.gga${NC} file in your project root or"
@@ -112,6 +114,7 @@ print_help() {
   echo "  gga run --no-cache     # Run review (ignore cache)"
   echo "  gga run --ci           # Run review in CI (last commit)"
   echo "  gga run --pr-mode      # Run review for full PR (auto-detects range)"
+  echo "  gga run --pr-mode --diff-only  # Run review focusing only on PR changes"
   echo "  gga cache status       # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
@@ -560,6 +563,7 @@ cmd_run() {
   local use_cache=true
   local ci_mode=false
   local pr_mode=false
+  local diff_only=false
   local commit_msg_file=""
    
   # Parse arguments
@@ -575,6 +579,10 @@ cmd_run() {
       --pr-mode)
         pr_mode=true
         use_cache=false  # Cache doesn't make sense for PR reviews
+        ;;
+      --diff-only)
+        diff_only=true
+        use_cache=false  # Cache doesn't make sense for diff reviews
         ;;
       *)
         # Non-flag argument is the commit message file (from commit-msg hook)
@@ -594,6 +602,15 @@ cmd_run() {
     echo ""
     echo "Configure a provider in .gga or set GGA_PROVIDER"
     echo "Run 'gga init' to create a config file"
+    echo ""
+    exit 1
+  fi
+
+  # Validate diff-only usage
+  if [[ "$diff_only" == true && "$pr_mode" != true ]]; then
+    log_error "--diff-only can only be used with --pr-mode"
+    echo ""
+    echo "Usage: gga run --pr-mode [--diff-only]"
     echo ""
     exit 1
   fi
@@ -635,7 +652,11 @@ cmd_run() {
   if [[ "$ci_mode" == true ]]; then
     log_info "Mode: ${CYAN}CI (reviewing last commit)${NC}"
   elif [[ "$pr_mode" == true ]]; then
-    log_info "Mode: ${CYAN}PR Mode (reviewing full PR range)${NC}"
+    if [[ "$diff_only" == true ]]; then
+      log_info "Mode: ${CYAN}PR Mode (diffs only)${NC}"
+    else
+      log_info "Mode: ${CYAN}PR Mode (full files)${NC}"
+    fi
   fi
   
   # Cache status
@@ -645,6 +666,8 @@ cmd_run() {
     log_info "Cache: ${YELLOW}disabled (CI mode)${NC}"
   elif [[ "$pr_mode" == true ]]; then
     log_info "Cache: ${YELLOW}disabled (PR mode)${NC}"
+  elif [[ "$diff_only" == true ]]; then
+    log_info "Cache: ${YELLOW}disabled (diff-only mode)${NC}"
   else
     log_info "Cache: ${YELLOW}disabled (--no-cache)${NC}"
   fi
@@ -744,7 +767,18 @@ cmd_run() {
   if [[ "$ci_mode" == "true" ]]; then
     use_staged="false"
   fi
-  PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
+  
+  # Get PR range for diff-only mode
+  local pr_range=""
+  if [[ "$pr_mode" == true && "$diff_only" == true ]]; then
+    pr_range=$(get_pr_range)
+    if [[ -z "$pr_range" ]]; then
+      log_error "Could not determine PR range for diff-only mode"
+      exit 1
+    fi
+  fi
+  
+  PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg" "$diff_only" "$pr_range")
 
   # Execute review
   log_info "Sending to $PROVIDER for review..."
@@ -944,10 +978,7 @@ get_ci_files() {
   done
 }
 
-get_pr_files() {
-  local patterns="$1"
-  local excludes="$2"
-
+get_pr_range() {
   # Determine the PR range automatically
   # Try to detect the base branch of the current branch or PR
   local pr_range=""
@@ -964,13 +995,11 @@ get_pr_files() {
     
     if [[ -n "$base_branch" ]]; then
       pr_range="origin/$base_branch...HEAD"
-      log_info "PR range detected: $pr_range"
     else
       # Fallback: try common base branches
       for branch in main master develop; do
         if git rev-parse --verify "origin/$branch" &>/dev/null; then
           pr_range="origin/$branch...HEAD"
-          log_info "Using base branch: $pr_range"
           break
         fi
       done
@@ -980,7 +1009,6 @@ get_pr_files() {
     for branch in main master develop; do
       if git rev-parse --verify "origin/$branch" &>/dev/null; then
         pr_range="origin/$branch...HEAD"
-        log_info "Using base branch: $pr_range"
         break
       fi
     done
@@ -989,7 +1017,23 @@ get_pr_files() {
   # If still no range, try a reasonable default
   if [[ -z "$pr_range" ]]; then
     pr_range="HEAD~5...HEAD"  # Last 5 commits as fallback
-    log_warning "Could not determine PR range, using: $pr_range"
+  fi
+  
+  echo "$pr_range"
+}
+
+get_pr_files() {
+  local patterns="$1"
+  local excludes="$2"
+
+  # Get PR range
+  local pr_range
+  pr_range=$(get_pr_range)
+  
+  if [[ -n "$pr_range" ]]; then
+    log_info "PR range detected: $pr_range"
+  else
+    log_warning "Could not determine PR range, using: HEAD~5...HEAD"
   fi
 
   # Get files changed in the PR range
@@ -1036,7 +1080,7 @@ get_pr_files() {
           if [[ "$file" == *"$suffix" ]]; then
             excluded=true
             break
-          fi
+        fi
         else
           # shellcheck disable=SC2053
           if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
@@ -1061,6 +1105,8 @@ build_prompt() {
   local files="$2"
   local use_staged="${3:-true}"  # Read from staging area by default
   local commit_msg="${4:-}"      # Optional commit message
+  local diff_only="${5:-false}"   # Include diffs instead of full files
+  local pr_range="${6:-}"        # PR range for diff generation
 
   # Start building the prompt
   cat << EOF
@@ -1081,10 +1127,40 @@ $commit_msg
 EOF
   fi
 
-  cat << 'EOF'
+  # Add diffs if in diff-only mode
+  if [[ "$diff_only" == "true" && -n "$pr_range" ]]; then
+    cat << 'EOF'
+
+=== CHANGES (diffs) ===
+Below are the exact changes made in this PR range. Review these specific modifications:
+EOF
+    echo ""
+    echo "--- DIFF RANGE: $pr_range ---"
+    echo ""
+    
+    while IFS= read -r file; do
+      if [[ -n "$file" ]]; then
+        echo ""
+        echo "--- DIFF: $file ---"
+        git diff "$pr_range" -- "$file" || {
+          echo "No changes detected for $file or file not found"
+        }
+      fi
+    done <<< "$files"
+    
+    cat << 'EOF'
+
+=== END DIFFS ===
+
+=== FILES TO REVIEW (for context) ===
+Below are the current complete file contents for context of the changes above:
+EOF
+  else
+    cat << 'EOF'
 
 === FILES TO REVIEW ===
 EOF
+  fi
 
   # Add file contents
   # In normal mode (pre-commit): read from staging area with "git show :file"
