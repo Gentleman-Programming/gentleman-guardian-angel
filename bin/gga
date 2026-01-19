@@ -87,6 +87,8 @@ print_help() {
   echo "  --no-cache        Force review all files, ignoring cache"
   echo "  --ci              CI mode: review files changed in last commit (HEAD~1..HEAD)"
   echo "                    Use this in GitLab CI, GitHub Actions, etc."
+  echo "  --pr-mode         PR mode: review all files changed in the full PR range"
+  echo "                    Automatically detects base branch (main/master/develop)"
   echo ""
   echo -e "${BOLD}CONFIGURATION:${NC}"
   echo "  Create a ${CYAN}.gga${NC} file in your project root or"
@@ -109,6 +111,7 @@ print_help() {
   echo "  gga run                # Run review (with cache)"
   echo "  gga run --no-cache     # Run review (ignore cache)"
   echo "  gga run --ci           # Run review in CI (last commit)"
+  echo "  gga run --pr-mode      # Run review for full PR (auto-detects range)"
   echo "  gga cache status       # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
@@ -556,8 +559,9 @@ cmd_cache() {
 cmd_run() {
   local use_cache=true
   local ci_mode=false
+  local pr_mode=false
   local commit_msg_file=""
-  
+   
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
@@ -567,6 +571,10 @@ cmd_run() {
       --ci)
         ci_mode=true
         use_cache=false  # Cache doesn't make sense in CI
+        ;;
+      --pr-mode)
+        pr_mode=true
+        use_cache=false  # Cache doesn't make sense for PR reviews
         ;;
       *)
         # Non-flag argument is the commit message file (from commit-msg hook)
@@ -626,6 +634,8 @@ cmd_run() {
   # Mode status
   if [[ "$ci_mode" == true ]]; then
     log_info "Mode: ${CYAN}CI (reviewing last commit)${NC}"
+  elif [[ "$pr_mode" == true ]]; then
+    log_info "Mode: ${CYAN}PR Mode (reviewing full PR range)${NC}"
   fi
   
   # Cache status
@@ -633,6 +643,8 @@ cmd_run() {
     log_info "Cache: ${GREEN}enabled${NC}"
   elif [[ "$ci_mode" == true ]]; then
     log_info "Cache: ${YELLOW}disabled (CI mode)${NC}"
+  elif [[ "$pr_mode" == true ]]; then
+    log_info "Cache: ${YELLOW}disabled (PR mode)${NC}"
   else
     log_info "Cache: ${YELLOW}disabled (--no-cache)${NC}"
   fi
@@ -644,6 +656,13 @@ cmd_run() {
     FILES_TO_CHECK=$(get_ci_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
     if [[ -z "$FILES_TO_CHECK" ]]; then
       log_warning "No matching files changed in last commit"
+      echo ""
+      exit 0
+    fi
+  elif [[ "$pr_mode" == true ]]; then
+    FILES_TO_CHECK=$(get_pr_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
+    if [[ -z "$FILES_TO_CHECK" ]]; then
+      log_warning "No matching files changed in PR range"
       echo ""
       exit 0
     fi
@@ -874,6 +893,118 @@ get_ci_files() {
   IFS=',' read -ra EXCLUDE_ARRAY <<< "$excludes"
 
   # Filter files (same logic as get_staged_files)
+  echo "$changed" | while IFS= read -r file; do
+    local match=false
+    local excluded=false
+
+    # Check if file matches any include pattern
+    for pattern in "${PATTERN_ARRAY[@]}"; do
+      pattern=$(echo "$pattern" | xargs) # trim whitespace
+      if [[ "$pattern" == \** ]]; then
+        local suffix="${pattern#\*}"
+        if [[ "$file" == *"$suffix" ]]; then
+          match=true
+          break
+        fi
+      else
+        # shellcheck disable=SC2053
+        if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
+          match=true
+          break
+        fi
+      fi
+    done
+
+    # Check if file matches any exclude pattern
+    if [[ "$match" == true && -n "$excludes" ]]; then
+      for pattern in "${EXCLUDE_ARRAY[@]}"; do
+        pattern=$(echo "$pattern" | xargs) # trim whitespace
+        if [[ "$pattern" == \** ]]; then
+          local suffix="${pattern#\*}"
+          if [[ "$file" == *"$suffix" ]]; then
+            excluded=true
+            break
+          fi
+        else
+          # shellcheck disable=SC2053
+          if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
+            excluded=true
+            break
+          fi
+        fi
+      done
+    fi
+
+    if [[ "$match" == true && "$excluded" == false ]]; then
+      # Only include if file still exists (wasn't deleted)
+      if [[ -f "$file" ]]; then
+        echo "$file"
+      fi
+    fi
+  done
+}
+
+get_pr_files() {
+  local patterns="$1"
+  local excludes="$2"
+
+  # Determine the PR range automatically
+  # Try to detect the base branch of the current branch or PR
+  local pr_range=""
+  
+  # If we're in a GitHub PR checkout, try to determine the base branch
+  if command -v gh &> /dev/null; then
+    # Try to get base branch from current PR if we're in one
+    local current_branch
+    current_branch=$(git branch --show-current 2>/dev/null || echo "HEAD")
+    
+    # Check if there's an open PR for this branch
+    local base_branch
+    base_branch=$(gh pr view "$current_branch" --json baseRefName --jq '.baseRefName' 2>/dev/null || echo "")
+    
+    if [[ -n "$base_branch" ]]; then
+      pr_range="origin/$base_branch...HEAD"
+      log_info "PR range detected: $pr_range"
+    else
+      # Fallback: try common base branches
+      for branch in main master develop; do
+        if git rev-parse --verify "origin/$branch" &>/dev/null; then
+          pr_range="origin/$branch...HEAD"
+          log_info "Using base branch: $pr_range"
+          break
+        fi
+      done
+    fi
+  else
+    # gh CLI not available, fallback to common branches
+    for branch in main master develop; do
+      if git rev-parse --verify "origin/$branch" &>/dev/null; then
+        pr_range="origin/$branch...HEAD"
+        log_info "Using base branch: $pr_range"
+        break
+      fi
+    done
+  fi
+  
+  # If still no range, try a reasonable default
+  if [[ -z "$pr_range" ]]; then
+    pr_range="HEAD~5...HEAD"  # Last 5 commits as fallback
+    log_warning "Could not determine PR range, using: $pr_range"
+  fi
+
+  # Get files changed in the PR range
+  local changed
+  changed=$(git diff --name-only --diff-filter=ACM "$pr_range" 2>/dev/null)
+
+  if [[ -z "$changed" ]]; then
+    return
+  fi
+
+  # Convert comma-separated patterns to array
+  IFS=',' read -ra PATTERN_ARRAY <<< "$patterns"
+  IFS=',' read -ra EXCLUDE_ARRAY <<< "$excludes"
+
+  # Filter files (same logic as get_staged_files and get_ci_files)
   echo "$changed" | while IFS= read -r file; do
     local match=false
     local excluded=false
