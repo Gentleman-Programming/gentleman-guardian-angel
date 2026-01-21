@@ -153,6 +153,7 @@ load_config() {
   EXCLUDE_PATTERNS=""
   RULES_FILE="$DEFAULT_RULES_FILE"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
+  PR_BASE_BRANCH=""
 
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
