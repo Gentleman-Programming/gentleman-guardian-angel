@@ -246,6 +246,8 @@ cmd_init() {
 #   PROVIDER="claude"
 #   PROVIDER="gemini"
 #   PROVIDER="codex"
+#   PROVIDER="github:gpt-4.1"
+#   PROVIDER="github:phi-4"
 #   PROVIDER="opencode"
 #   PROVIDER="opencode:anthropic/claude-opus-4-5"
 #   PROVIDER="ollama:llama3.2"
