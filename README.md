@@ -1076,6 +1076,63 @@ The tool sends full file contents. For better performance:
 EXCLUDE_PATTERNS="*.min.js,*.bundle.js,dist/*,build/*,*.generated.ts"
 ```
 
+### Windows: "Open with" dialog appears instead of running
+
+GGA is a Bash script and doesn't run natively in Windows CMD or PowerShell.
+
+**Solutions:**
+
+1. **Use Git Bash** (Recommended)
+   ```bash
+   # Open Git Bash (installed with Git for Windows)
+   # Then run gga normally
+   gga run
+   ```
+
+2. **Use WSL (Windows Subsystem for Linux)**
+   ```bash
+   # Install WSL, then install gga inside Linux
+   wsl
+   brew install gentleman-programming/tap/gga
+   ```
+
+3. **Use PowerShell with Git**
+   ```powershell
+   # Run through bash explicitly
+   bash -c "gga run"
+   ```
+
+### "gga: command not found" after manual installation
+
+The manual installation (`./install.sh`) doesn't automatically modify your shell config. The installer shows a warning with instructions, but if you missed it:
+
+**Solutions:**
+
+1. **Reinstall with Homebrew** (Recommended - handles PATH automatically)
+   ```bash
+   brew install gentleman-programming/tap/gga
+   ```
+
+2. **Add to PATH manually**
+   ```bash
+   # Add to ~/.bashrc or ~/.zshrc
+   export PATH="$HOME/.local/bin:$PATH"
+   
+   # Reload shell
+   source ~/.bashrc  # or ~/.zshrc
+   ```
+
+3. **Verify installation location**
+   ```bash
+   # Check where gga was installed
+   ls -la ~/.local/bin/gga
+   
+   # Or check /usr/local/bin
+   ls -la /usr/local/bin/gga
+   ```
+
+> **Note:** The Homebrew installation (`brew install gentleman-programming/tap/gga`) is recommended because it handles PATH configuration automatically.
+
 ---
 
 ## 🧪 Development
