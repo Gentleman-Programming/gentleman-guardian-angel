@@ -860,11 +860,15 @@ get_staged_files() {
 get_ci_files() {
   local patterns="$1"
   local excludes="$2"
+  local source_commit="HEAD~1"
+
+  if [[ -n ${GGA_CI_SOURCE_COMMIT:-} ]]; then
+    source_commit="${GGA_CI_SOURCE_COMMIT}"
+  fi
 
   # Get files changed in the last commit (for CI environments)
   local changed
-  changed=$(git diff --name-only --diff-filter=ACM HEAD~1..HEAD 2>/dev/null)
-
+  changed=$(git diff --name-only --diff-filter=ACM "$source_commit"..HEAD 2>/dev/null)
   if [[ -z "$changed" ]]; then
     return
   fi
