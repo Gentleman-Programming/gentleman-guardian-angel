@@ -236,10 +236,12 @@ execute_gemini() {
     return 1
   fi
 
+  # Gemini CLI in headless mode
+  # Using stdin to pass prompt (avoids ARG_MAX limits for large prompts)
   # --yolo flag auto-approves all tool calls (required for CI/non-interactive)
   # See: https://geminicli.com/docs/cli/headless/
-  gemini -p "$prompt" --yolo 2>&1
-  return $?
+  printf '%s' "$prompt" | gemini --yolo 2>&1
+  return "${PIPESTATUS[1]}"
 }
 
 is_gemini_authenticated() {
