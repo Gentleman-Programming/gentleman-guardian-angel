@@ -434,7 +434,7 @@ execute_lmstudio_api_fallback() {
   # Build JSON payload manually (less safe, but works without python3)
   local json_payload
   json_payload="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\""
-  json_payload+="$(printf '%s' "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  json_payload+="$(printf '%s' "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | sed ':a;N;$!ba;s/\n/\\n/g')"
   json_payload+="\"}],\"temperature\":0.7,\"stream\":false}"
 
   # Ensure host ends with /v1
