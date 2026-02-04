@@ -65,6 +65,73 @@ Describe 'providers.sh'
     End
   End
 
+  Describe 'validate_lmstudio_host()'
+    It 'accepts localhost with default port'
+      When call validate_lmstudio_host "http://localhost:1234/v1"
+      The status should be success
+    End
+
+    It 'accepts localhost without /v1 path'
+      When call validate_lmstudio_host "http://localhost:1234"
+      The status should be success
+    End
+
+    It 'accepts localhost with custom port'
+      When call validate_lmstudio_host "http://localhost:8080/v1"
+      The status should be success
+    End
+
+    It 'accepts https'
+      When call validate_lmstudio_host "https://lmstudio.example.com:443/v1"
+      The status should be success
+    End
+
+    It 'accepts IP address'
+      When call validate_lmstudio_host "http://192.168.1.100:1234/v1"
+      The status should be success
+    End
+
+    It 'accepts hostname without port and /v1'
+      When call validate_lmstudio_host "http://lmstudio.local/v1"
+      The status should be success
+    End
+
+    It 'rejects URL with query string'
+      When call validate_lmstudio_host "http://localhost:1234/v1?foo=bar"
+      The status should be failure
+    End
+
+    It 'rejects URL with path beyond /v1'
+      When call validate_lmstudio_host "http://localhost:1234/v1/chat"
+      The status should be failure
+    End
+
+    It 'rejects command injection attempt'
+      When call validate_lmstudio_host "http://localhost:1234/api -d @/etc/passwd #"
+      The status should be failure
+    End
+
+    It 'rejects file protocol'
+      When call validate_lmstudio_host "file:///etc/passwd"
+      The status should be failure
+    End
+
+    It 'rejects newline injection'
+      When call validate_lmstudio_host $'http://localhost:1234\nX-Injected: header'
+      The status should be failure
+    End
+
+    It 'rejects empty string'
+      When call validate_lmstudio_host ""
+      The status should be failure
+    End
+
+    It 'rejects missing protocol'
+      When call validate_lmstudio_host "localhost:1234"
+      The status should be failure
+    End
+  End
+
   Describe 'execute_ollama()'
     # We need to mock the dependent functions/commands
     
@@ -242,7 +309,7 @@ All good!"
 
   Describe 'get_provider_info()'
     # These tests don't require mocking - they just test the info function
-    
+
     It 'returns info for claude'
       When call get_provider_info "claude"
       The output should include "Claude"
@@ -264,9 +331,176 @@ All good!"
       The output should include "llama3.2"
     End
 
+    It 'returns info for lmstudio without model'
+      When call get_provider_info "lmstudio"
+      The output should include "LM Studio"
+    End
+
+    It 'returns info for lmstudio with model name'
+      When call get_provider_info "lmstudio:llama-3.2-3b-instruct"
+      The output should include "LM Studio"
+      The output should include "llama-3.2-3b-instruct"
+    End
+
     It 'returns unknown for invalid provider'
       When call get_provider_info "invalid"
       The output should include "Unknown"
+    End
+  End
+
+  Describe 'execute_lmstudio()'
+    Describe 'routing logic'
+      It 'calls execute_lmstudio_api when python3 and curl are available'
+        command() {
+          case "$2" in
+            python3|curl) return 0 ;;
+            *) return 1 ;;
+          esac
+        }
+        execute_lmstudio_api() {
+          echo "API_CALLED:$1:$3"
+        }
+        validate_lmstudio_host() { return 0; }
+
+        When call execute_lmstudio "" "test prompt"
+        The output should include "API_CALLED::http://localhost:1234/v1"
+      End
+
+      It 'calls execute_lmstudio_api_fallback when python3 is not available'
+        command() {
+          case "$2" in
+            python3) return 1 ;;
+            curl) return 0 ;;
+            *) return 1 ;;
+          esac
+        }
+        execute_lmstudio_api_fallback() {
+          echo "FALLBACK_CALLED:$1:$3"
+        }
+        validate_lmstudio_host() { return 0; }
+
+        When call execute_lmstudio "llama-3" "test prompt"
+        The output should include "FALLBACK_CALLED:llama-3:http://localhost:1234/v1"
+      End
+
+      It 'fails when LMSTUDIO_HOST is invalid'
+        LMSTUDIO_HOST="invalid-host"
+
+        When call execute_lmstudio "" "test prompt"
+        The status should be failure
+        The stderr should include "Invalid LMSTUDIO_HOST"
+      End
+
+      It 'uses custom LMSTUDIO_HOST when set'
+        LMSTUDIO_HOST="http://custom-host:8080/v1"
+        command() { return 0; }
+        execute_lmstudio_api() {
+          echo "HOST:$3"
+        }
+        validate_lmstudio_host() { return 0; }
+
+        When call execute_lmstudio "llama-3" "test prompt"
+        The output should include "HOST:http://custom-host:8080/v1"
+      End
+
+      It 'passes model to API function'
+        command() { return 0; }
+        execute_lmstudio_api() {
+          echo "MODEL:$1"
+        }
+        validate_lmstudio_host() { return 0; }
+
+        When call execute_lmstudio "llama-3.2" "test prompt"
+        The output should include "MODEL:llama-3.2"
+      End
+    End
+  End
+
+  Describe 'execute_lmstudio_api()'
+    skip_if_no_python3() {
+      ! command -v python3 &> /dev/null
+    }
+
+    Skip if "python3 not available" skip_if_no_python3
+
+    It 'handles curl failure'
+      curl() {
+        echo "Connection refused"
+        return 7
+      }
+
+      When call execute_lmstudio_api "llama-3" "test" "http://localhost:1234/v1"
+      The status should be failure
+      The stderr should include "Failed to connect"
+    End
+
+    It 'parses JSON response correctly'
+      curl() {
+        cat <<'EOF'
+{
+  "choices": [
+    {
+      "message": {
+        "content": "STATUS: PASSED\nAll files comply."
+      }
+    }
+  ]
+}
+EOF
+      }
+
+      When call execute_lmstudio_api "llama-3" "test" "http://localhost:1234/v1"
+      The output should include "STATUS: PASSED"
+    End
+
+    It 'handles invalid JSON response'
+      curl() {
+        echo 'not valid json'
+      }
+
+      When call execute_lmstudio_api "llama-3" "test" "http://localhost:1234/v1"
+      The status should be failure
+      The stderr should include "Invalid JSON"
+    End
+
+    It 'handles response with error field'
+      curl() {
+        echo '{"error": {"message": "model not found"}}'
+      }
+
+      When call execute_lmstudio_api "llama-3" "test" "http://localhost:1234/v1"
+      The status should be failure
+      The stderr should include "model not found"
+    End
+
+    It 'handles empty choices array'
+      curl() {
+        echo '{"choices": []}'
+      }
+
+      When call execute_lmstudio_api "llama-3" "test" "http://localhost:1234/v1"
+      The status should be failure
+      The stderr should include "Unexpected response format"
+    End
+
+    It 'uses default model when none specified'
+      curl() {
+        cat <<'EOF'
+{
+  "choices": [
+    {
+      "message": {
+        "content": "LOCAL_MODEL_RESPONSE"
+      }
+    }
+  ]
+}
+EOF
+      }
+
+      When call execute_lmstudio_api "" "test" "http://localhost:1234/v1"
+      The status should be success
+      The output should eq "LOCAL_MODEL_RESPONSE"
     End
   End
 
@@ -299,6 +533,37 @@ All good!"
     # For now, we'll skip these or mark them as pending
     
     Skip "Requires refactoring validate_provider to separate concerns"
+  End
+
+  Describe 'validate_provider() - lmstudio'
+    # Test LM Studio validation - only requires curl, not LM Studio itself
+
+    It 'fails when curl not available'
+      # Mock command -v to fail for curl
+      command() {
+        case "$2" in
+          curl) return 1 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "lmstudio"
+      The status should be failure
+      The output should include "curl not found"
+    End
+
+    It 'succeeds when curl is available'
+      # Mock command -v to succeed for curl
+      command() {
+        case "$2" in
+          curl) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "lmstudio"
+      The status should be success
+    End
   End
 
   Describe 'provider base extraction'

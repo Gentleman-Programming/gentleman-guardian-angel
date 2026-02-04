@@ -448,6 +448,7 @@ Use whichever AI CLI you have installed:
 | **Codex**    | `codex`          | `codex exec "prompt"`             | `npm i -g @openai/codex`                                                           |
 | **OpenCode** | `opencode`       | `echo "prompt" \| opencode run`   | [opencode.ai](https://opencode.ai)                                                 |
 | **Ollama**   | `ollama:<model>` | `ollama run <model> "prompt"`     | [ollama.ai](https://ollama.ai)                                                     |
+| **LM Studio**| `lmstudio[:model]`| HTTP API call to local server     | [lmstudio.ai](https://lmstudio.ai)                                                 |
 
 ### Provider Examples
 
@@ -478,6 +479,16 @@ PROVIDER="ollama:qwen2.5-coder"
 
 # Use Ollama with DeepSeek Coder
 PROVIDER="ollama:deepseek-coder"
+
+# Use LM Studio with default model
+PROVIDER="lmstudio"
+
+# Use LM Studio with specific model
+PROVIDER="lmstudio:llama-3.2-3b-instruct"
+
+# Use LM Studio with custom host
+LMSTUDIO_HOST="http://localhost:8080/v1"
+PROVIDER="lmstudio"
 ```
 
 ---
@@ -490,7 +501,7 @@ Create this file in your project root:
 
 ```bash
 # AI Provider (required)
-# Options: claude, gemini, codex, ollama:<model>
+# Options: claude, gemini, codex, ollama:<model>, lmstudio[:model]
 PROVIDER="claude"
 
 # File patterns to review (comma-separated globs)
@@ -716,7 +727,7 @@ RULES_FILE="AGENTS.md"
 
 ```bash
 # .gga
-PROVIDER="ollama:codellama"
+PROVIDER="lmstudio:codellama"
 FILE_PATTERNS="*.py"
 EXCLUDE_PATTERNS="*_test.py,test_*.py,conftest.py,__pycache__/*"
 RULES_FILE=".coding-standards.md"
@@ -765,7 +776,7 @@ git commit -m "feat: add feature"
     │
     ├──▶ 6. Build prompt: rules + file contents
     │
-    ├──▶ 7. Send to AI provider (claude/gemini/codex/ollama)
+    ├──▶ 7. Send to AI provider (claude/gemini/codex/ollama/lmstudio)
     │
     └──▶ 8. Parse response
             │
@@ -1044,6 +1055,9 @@ which ollama
 
 # Test if the provider works
 echo "Say hello" | claude --print
+
+# For LM Studio, check if the API is accessible
+curl http://localhost:1234/v1/models
 ```
 
 ### "Rules file not found"
@@ -1076,62 +1090,24 @@ The tool sends full file contents. For better performance:
 EXCLUDE_PATTERNS="*.min.js,*.bundle.js,dist/*,build/*,*.generated.ts"
 ```
 
-### Windows: "Open with" dialog appears instead of running
+### LM Studio connection issues
 
-GGA is a Bash script and doesn't run natively in Windows CMD or PowerShell.
+If you get "Failed to connect to LM Studio" errors:
 
-**Solutions:**
-
-1. **Use Git Bash** (Recommended)
+1. Ensure LM Studio is running and the API server is enabled
+2. Check the API port in LM Studio settings (default: 1234)
+3. Verify the host setting:
    ```bash
-   # Open Git Bash (installed with Git for Windows)
-   # Then run gga normally
-   gga run
-   ```
+   # Default
+   LMSTUDIO_HOST="http://localhost:1234/v1"
 
-2. **Use WSL (Windows Subsystem for Linux)**
+   # Custom port
+   LMSTUDIO_HOST="http://localhost:8080/v1"
+   ```
+4. Test the connection:
    ```bash
-   # Install WSL, then install gga inside Linux
-   wsl
-   brew install gentleman-programming/tap/gga
+   curl http://localhost:1234/v1/models
    ```
-
-3. **Use PowerShell with Git**
-   ```powershell
-   # Run through bash explicitly
-   bash -c "gga run"
-   ```
-
-### "gga: command not found" after manual installation
-
-The manual installation (`./install.sh`) doesn't automatically modify your shell config. The installer shows a warning with instructions, but if you missed it:
-
-**Solutions:**
-
-1. **Reinstall with Homebrew** (Recommended - handles PATH automatically)
-   ```bash
-   brew install gentleman-programming/tap/gga
-   ```
-
-2. **Add to PATH manually**
-   ```bash
-   # Add to ~/.bashrc or ~/.zshrc
-   export PATH="$HOME/.local/bin:$PATH"
-   
-   # Reload shell
-   source ~/.bashrc  # or ~/.zshrc
-   ```
-
-3. **Verify installation location**
-   ```bash
-   # Check where gga was installed
-   ls -la ~/.local/bin/gga
-   
-   # Or check /usr/local/bin
-   ls -la /usr/local/bin/gga
-   ```
-
-> **Note:** The Homebrew installation (`brew install gentleman-programming/tap/gga`) is recommended because it handles PATH configuration automatically.
 
 ---
 
