@@ -490,7 +490,7 @@ EOF
   "choices": [
     {
       "message": {
-        "content": "Done"
+        "content": "LOCAL_MODEL_RESPONSE"
       }
     }
   ]
@@ -500,6 +500,7 @@ EOF
 
       When call execute_lmstudio_api "" "test" "http://localhost:1234/v1"
       The status should be success
+      The output should eq "LOCAL_MODEL_RESPONSE"
     End
   End
 
