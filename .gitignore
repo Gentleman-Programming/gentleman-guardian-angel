@@ -1,0 +1,31 @@
+# Work in progress
+_wip/
+
+# Coverage reports
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Environment and secrets
+.env
+.env.local
+
+# Cache
+.cache/
+
+# Docker
+.docker/
+
+# Temporary files
+*.tmp
+*.bak
+*.log
