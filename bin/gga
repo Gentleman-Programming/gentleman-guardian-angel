@@ -780,7 +780,16 @@ cmd_run() {
   if ! validate_pr_mode_flags "$pr_mode" "$diff_only"; then
     exit 1
   fi
-  
+
+  # Determine whether file content is read from the staging area.
+  # CI and PR mode review already-committed files, so they read from the
+  # filesystem. Defined here so cache lookups use the same source as
+  # build_prompt() does.
+  local use_staged="true"
+  if [[ "$ci_mode" == "true" || "$pr_mode" == "true" ]]; then
+    use_staged="false"
+  fi
+
   print_banner
   load_config
 
@@ -904,7 +913,7 @@ cmd_run() {
     cache_initialized=true
     
     # Filter out cached files
-    files_to_review=$(filter_uncached_files "$FILES_TO_CHECK")
+    files_to_review=$(filter_uncached_files "$FILES_TO_CHECK" "$use_staged")
     
     # Calculate cached files
     local total_count=0
@@ -961,11 +970,6 @@ cmd_run() {
     PROMPT=$(build_pr_prompt "$RULES" "$files_to_review" "$diff_only" "$pr_diff" "$pr_base")
   else
     # Normal/CI mode: use standard prompt builder
-    # In CI mode, read from filesystem; otherwise read from staging area
-    local use_staged="true"
-    if [[ "$ci_mode" == "true" ]]; then
-      use_staged="false"
-    fi
     PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
   fi
 
@@ -1018,7 +1022,7 @@ cmd_run() {
     if [[ "$parsed_status" == "PASSED" ]]; then
       # Cache the passed files
       if [[ "$cache_initialized" == true ]]; then
-        cache_files_passed "$files_to_review"
+        cache_files_passed "$files_to_review" "$use_staged"
       fi
       log_success "CODE REVIEW PASSED"
       echo ""
