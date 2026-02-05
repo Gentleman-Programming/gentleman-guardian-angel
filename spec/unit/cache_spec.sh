@@ -295,6 +295,138 @@ Describe 'cache.sh'
     End
   End
 
+  Describe 'get_staged_file_hash()'
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      cd "$TEMP_DIR"
+      git init --quiet
+      git config user.email "test@test.com"
+      git config user.name "Test User"
+    }
+
+    cleanup() {
+      cd /
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'returns a 64 character SHA256 hash for a staged file'
+      echo "staged content" > test.txt
+      git add test.txt
+      When call get_staged_file_hash "test.txt"
+      The status should be success
+      The length of output should eq 64
+    End
+
+    It 'returns empty for a file not in the index'
+      When call get_staged_file_hash "nonexistent.txt"
+      The output should eq ""
+      The status should be failure
+    End
+
+    It 'returns hash of staged content, not working directory content'
+      echo "staged version" > test.txt
+      git add test.txt
+      echo "working dir version" > test.txt
+
+      staged_hash=$(get_staged_file_hash "test.txt")
+      working_hash=$(get_file_hash "test.txt")
+
+      The value "$staged_hash" should not eq "$working_hash"
+    End
+
+    It 'returns same hash for same staged content'
+      echo "same content" > file1.txt
+      echo "same content" > file2.txt
+      git add file1.txt file2.txt
+
+      hash1=$(get_staged_file_hash "file1.txt")
+      hash2=$(get_staged_file_hash "file2.txt")
+
+      The value "$hash1" should eq "$hash2"
+    End
+
+    It 'works when file is deleted from working directory after staging'
+      echo "will be deleted" > test.txt
+      git add test.txt
+      rm test.txt
+
+      When call get_staged_file_hash "test.txt"
+      The status should be success
+      The length of output should eq 64
+    End
+  End
+
+  Describe 'cache with use_staged parameter'
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      cd "$TEMP_DIR"
+      git init --quiet
+      git config user.email "test@test.com"
+      git config user.name "Test User"
+      echo "rules" > AGENTS.md
+      echo "config" > .gga
+      echo "staged content" > test.ts
+      git add test.ts
+      export CACHE_DIR="$TEMP_DIR/.cache/gga"
+      init_cache "AGENTS.md" ".gga" > /dev/null
+    }
+
+    cleanup() {
+      cd /
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'caches using staged hash when use_staged is true'
+      cache_file_result "test.ts" "PASSED" "true"
+      When call is_file_cached "test.ts" "true"
+      The status should be success
+    End
+
+    It 'cache hit on staged hash even when working dir differs'
+      cache_file_result "test.ts" "PASSED" "true"
+      echo "modified working content" > test.ts
+      When call is_file_cached "test.ts" "true"
+      The status should be success
+    End
+
+    It 'cache miss when using working dir hash but cached with staged hash'
+      cache_file_result "test.ts" "PASSED" "true"
+      echo "different content" > test.ts
+      When call is_file_cached "test.ts" "false"
+      The status should be failure
+    End
+
+    It 'cache miss when staged content changes'
+      cache_file_result "test.ts" "PASSED" "true"
+      echo "new staged content" > test.ts
+      git add test.ts
+      When call is_file_cached "test.ts" "true"
+      The status should be failure
+    End
+
+    It 'defaults to working directory hash when use_staged not specified'
+      cache_file_result "test.ts" "PASSED"
+      When call is_file_cached "test.ts"
+      The status should be success
+    End
+
+    It 'filter_uncached_files works with use_staged parameter'
+      cache_file_result "test.ts" "PASSED" "true"
+      echo "content2" > file2.ts
+      git add file2.ts
+      files=$'test.ts\nfile2.ts'
+      When call filter_uncached_files "$files" "true"
+      The output should not include "test.ts"
+      The output should include "file2.ts"
+    End
+  End
+
   Describe 'clear_project_cache()'
     setup() {
       TEMP_DIR=$(mktemp -d)

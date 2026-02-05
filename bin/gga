@@ -576,7 +576,14 @@ cmd_run() {
         ;;
     esac
   done
-  
+
+  # Determine if we should read from staging area
+  # In CI mode, files are already committed so we read from filesystem
+  local use_staged="true"
+  if [[ "$ci_mode" == "true" ]]; then
+    use_staged="false"
+  fi
+
   print_banner
   load_config
 
@@ -672,7 +679,7 @@ cmd_run() {
     cache_initialized=true
     
     # Filter out cached files
-    files_to_review=$(filter_uncached_files "$FILES_TO_CHECK")
+    files_to_review=$(filter_uncached_files "$FILES_TO_CHECK" "$use_staged")
     
     # Calculate cached files
     local total_count=0
@@ -720,11 +727,6 @@ cmd_run() {
   fi
 
   # Build prompt only with files to review
-  # In CI mode, read from filesystem; otherwise read from staging area
-  local use_staged="true"
-  if [[ "$ci_mode" == "true" ]]; then
-    use_staged="false"
-  fi
   PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
 
   # Execute review
@@ -755,7 +757,7 @@ cmd_run() {
   if echo "$status_check" | grep -q "STATUS: PASSED"; then
     # Cache the passed files
     if [[ "$cache_initialized" == true ]]; then
-      cache_files_passed "$files_to_review"
+      cache_files_passed "$files_to_review" "$use_staged"
     fi
     log_success "CODE REVIEW PASSED"
     echo ""

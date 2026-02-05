@@ -66,6 +66,16 @@ get_file_hash() {
   fi
 }
 
+# Get hash of a file's staged content (from git index)
+get_staged_file_hash() {
+  local file="$1"
+  if ! git show ":$file" &>/dev/null; then
+    echo ""
+    return 1
+  fi
+  git show ":$file" | _compute_hash_stdin
+}
+
 # Get hash of a string
 get_string_hash() {
   local str="$1"
@@ -181,18 +191,23 @@ invalidate_cache() {
 # Check if a file is cached (and cache is still valid for that file)
 is_file_cached() {
   local file="$1"
-  
+  local use_staged="${2:-false}"
+
   local cache_dir
   cache_dir=$(get_project_cache_dir)
-  
+
   if [[ -z "$cache_dir" || ! -d "$cache_dir/files" ]]; then
     return 1
   fi
-  
-  # Get current file hash
+
+  # Get current file hash - from staging area or working directory
   local file_hash
-  file_hash=$(get_file_hash "$file")
-  
+  if [[ "$use_staged" == "true" ]]; then
+    file_hash=$(get_staged_file_hash "$file")
+  else
+    file_hash=$(get_file_hash "$file")
+  fi
+
   if [[ -z "$file_hash" ]]; then
     return 1
   fi
@@ -216,20 +231,25 @@ is_file_cached() {
 cache_file_result() {
   local file="$1"
   local status="$2"  # PASSED or FAILED
-  
+  local use_staged="${3:-false}"
+
   local cache_dir
   cache_dir=$(get_project_cache_dir)
-  
+
   if [[ -z "$cache_dir" ]]; then
     return 1
   fi
-  
+
   mkdir -p "$cache_dir/files"
-  
-  # Get file hash
+
+  # Get file hash - from staging area or working directory
   local file_hash
-  file_hash=$(get_file_hash "$file")
-  
+  if [[ "$use_staged" == "true" ]]; then
+    file_hash=$(get_staged_file_hash "$file")
+  else
+    file_hash=$(get_file_hash "$file")
+  fi
+
   if [[ -n "$file_hash" ]]; then
     echo "$status" > "$cache_dir/files/$file_hash"
   fi
@@ -238,10 +258,11 @@ cache_file_result() {
 # Cache multiple files as passed
 cache_files_passed() {
   local files="$1"
-  
+  local use_staged="${2:-false}"
+
   while IFS= read -r file; do
     if [[ -n "$file" ]]; then
-      cache_file_result "$file" "PASSED"
+      cache_file_result "$file" "PASSED" "$use_staged"
     fi
   done <<< "$files"
 }
@@ -249,11 +270,12 @@ cache_files_passed() {
 # Filter out cached files from list
 filter_uncached_files() {
   local files="$1"
+  local use_staged="${2:-false}"
   local uncached=""
-  
+
   while IFS= read -r file; do
     if [[ -n "$file" ]]; then
-      if ! is_file_cached "$file"; then
+      if ! is_file_cached "$file" "$use_staged"; then
         if [[ -n "$uncached" ]]; then
           uncached="$uncached"$'\n'"$file"
         else
@@ -269,13 +291,14 @@ filter_uncached_files() {
 # Get cache stats for display
 get_cache_stats() {
   local files="$1"
+  local use_staged="${2:-false}"
   local total=0
   local cached=0
-  
+
   while IFS= read -r file; do
     if [[ -n "$file" ]]; then
       ((total++))
-      if is_file_cached "$file"; then
+      if is_file_cached "$file" "$use_staged"; then
         ((cached++))
       fi
     fi
