@@ -91,6 +91,16 @@ validate_provider() {
         return 1
       fi
       ;;
+    cursor)
+      if ! command -v agent &> /dev/null; then
+        echo -e "${RED}❌ Cursor CLI not found${NC}"
+        echo ""
+        echo "Install Cursor:"
+        echo "  https://cursor.com/"
+        echo ""
+        return 1
+      fi
+      ;;
     *)
       echo -e "${RED}❌ Unknown provider: $provider${NC}"
       echo ""
@@ -100,6 +110,7 @@ validate_provider() {
       echo "  - codex"
       echo "  - opencode"
       echo "  - ollama:<model>"
+      echo "  - cursor"
       echo ""
       return 1
       ;;
@@ -138,6 +149,9 @@ execute_provider() {
       local model="${provider#*:}"
       execute_ollama "$model" "$prompt"
       ;;
+    cursor)
+      execute_cursor "$prompt"
+      ;; 
   esac
 }
 
@@ -308,6 +322,12 @@ execute_ollama_cli() {
   return "${PIPESTATUS[0]}"
 }
 
+execute_cursor() {
+  local prompt="$1"
+  agent --trust --print "$prompt" 2>&1
+  return $?
+}
+
 # ============================================================================
 # Provider Info
 # ============================================================================
@@ -337,6 +357,9 @@ get_provider_info() {
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
+      ;;
+    cursor)
+      echo "Cursor Agent CLI"
       ;;
     *)
       echo "Unknown provider"
