@@ -562,8 +562,10 @@ print(payload)
   fi
 
   # Call GitHub Models API
+  # Use -s (silent) without --fail-with-body so we always get the response body
+  # The python3 parser handles error responses from the API
   local api_response
-  api_response=$(curl -s --fail-with-body \
+  api_response=$(curl -sS \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $token" \
     -d "$json_payload" \

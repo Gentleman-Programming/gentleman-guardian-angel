@@ -93,7 +93,7 @@ Describe 'providers.sh GitHub Models support'
       }
 
       # Mock curl to verify it receives the right arguments
-      # curl args: -s --fail-with-body -H "Content-Type: ..." -H "Authorization: Bearer ..." -d "..." URL
+      # curl args: -sS -H "Content-Type: ..." -H "Authorization: Bearer ..." -d "..." URL
       curl() {
         # Check all args as a single string for the key values
         local all_args="$*"
