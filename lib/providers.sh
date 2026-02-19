@@ -9,6 +9,7 @@
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
+# - lmstudio[:model]: LM Studio (optional model)
 # ============================================================================
 
 # Colors (in case sourced independently)
