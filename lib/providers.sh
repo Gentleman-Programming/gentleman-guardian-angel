@@ -10,6 +10,7 @@
 # - opencode: OpenCode CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
 # - lmstudio[:model]: LM Studio (optional model)
+# - github:<model>: GitHub Models (OpenAI-compatible API)
 # ============================================================================
 
 # Colors (in case sourced independently)
@@ -105,6 +106,47 @@ validate_provider() {
         return 1
       fi
       ;;
+    github)
+      # GitHub Models requires gh CLI for authentication
+      if ! command -v gh &> /dev/null; then
+        echo -e "${RED}❌ gh CLI not found${NC}"
+        echo ""
+        echo "Install GitHub CLI:"
+        echo "  brew install gh"
+        echo "  # or: https://cli.github.com"
+        echo ""
+        echo "Then authenticate:"
+        echo "  gh auth login"
+        echo ""
+        return 1
+      fi
+      # GitHub Models requires curl for API calls
+      if ! command -v curl &> /dev/null; then
+        echo -e "${RED}❌ curl not found${NC}"
+        echo ""
+        echo "Install curl:"
+        echo "  # Most systems have it pre-installed"
+        echo "  # Ubuntu/Debian: sudo apt-get install curl"
+        echo "  # macOS: brew install curl"
+        echo ""
+        return 1
+      fi
+      # Model is required for GitHub Models
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        echo -e "${RED}❌ GitHub Models requires a model${NC}"
+        echo ""
+        echo "Specify model in provider config:"
+        echo "  PROVIDER=\"github:gpt-4o\""
+        echo "  PROVIDER=\"github:gpt-4.1\""
+        echo "  PROVIDER=\"github:deepseek-r1\""
+        echo "  PROVIDER=\"github:grok-3\""
+        echo ""
+        echo "See available models at: https://github.com/marketplace/models"
+        echo ""
+        return 1
+      fi
+      ;;
     *)
       echo -e "${RED}❌ Unknown provider: $provider${NC}"
       echo ""
@@ -115,6 +157,7 @@ validate_provider() {
       echo "  - opencode"
       echo "  - ollama:<model>"
       echo "  - lmstudio[:model]"
+      echo "  - github:<model>"
       echo ""
       return 1
       ;;
@@ -159,6 +202,10 @@ execute_provider() {
         model=""
       fi
       execute_lmstudio "$model" "$prompt"
+      ;;
+    github)
+      local model="${provider#*:}"
+      execute_github_models "$model" "$prompt"
       ;;
   esac
 }
@@ -475,6 +522,96 @@ execute_lmstudio_api_fallback() {
 }
 
 # ============================================================================
+# GitHub Models Implementation
+# ============================================================================
+
+# GitHub Models API endpoint (OpenAI-compatible)
+GITHUB_MODELS_ENDPOINT="https://models.inference.ai.azure.com/chat/completions"
+
+execute_github_models() {
+  local model="$1"
+  local prompt="$2"
+
+  # Get auth token from gh CLI
+  local token
+  if ! token=$(gh auth token 2>&1); then
+    echo "Error: GitHub CLI authentication failed" >&2
+    echo "Run 'gh auth login' to authenticate" >&2
+    return 1
+  fi
+
+  # Build JSON payload safely using python3
+  local json_payload
+  if ! json_payload=$(printf '%s' "$prompt" | python3 -c "
+import sys, json
+prompt = sys.stdin.read()
+model = sys.argv[1]
+payload = json.dumps({
+    'model': model,
+    'messages': [
+        {'role': 'system', 'content': 'You are Guardian Angel, a code reviewer.'},
+        {'role': 'user', 'content': prompt}
+    ],
+    'temperature': 0.2
+})
+print(payload)
+" "$model" 2>&1); then
+    echo "Error: Failed to build JSON payload" >&2
+    echo "$json_payload" >&2
+    return 1
+  fi
+
+  # Call GitHub Models API
+  local api_response
+  api_response=$(curl -s --fail-with-body \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $token" \
+    -d "$json_payload" \
+    "$GITHUB_MODELS_ENDPOINT" 2>&1)
+
+  local curl_status=$?
+  if [[ $curl_status -ne 0 ]]; then
+    echo "Error: Failed to connect to GitHub Models API" >&2
+    echo "$api_response" >&2
+    return 1
+  fi
+
+  # Extract response using python3
+  printf '%s' "$api_response" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    # Check for error response
+    if 'error' in data:
+        error = data['error']
+        if isinstance(error, dict):
+            msg = error.get('message', 'Unknown error from GitHub Models')
+        else:
+            msg = str(error)
+        print(f'Error: {msg}', file=sys.stderr)
+        sys.exit(1)
+    # Extract content from choices
+    choices = data.get('choices', [])
+    if not choices:
+        print('Error: Unexpected response format from GitHub Models', file=sys.stderr)
+        sys.exit(1)
+    content = choices[0].get('message', {}).get('content', '')
+    if content:
+        print(content)
+    else:
+        print('Error: Empty response from GitHub Models', file=sys.stderr)
+        sys.exit(1)
+except json.JSONDecodeError as e:
+    print(f'Error: Invalid JSON response from GitHub Models: {e}', file=sys.stderr)
+    sys.exit(1)
+except (KeyError, IndexError, TypeError) as e:
+    print(f'Error: Unexpected response format from GitHub Models', file=sys.stderr)
+    sys.exit(1)
+"
+  return $?
+}
+
+# ============================================================================
 # Provider Info
 # ============================================================================
 
@@ -511,6 +648,10 @@ get_provider_info() {
       else
         echo "LM Studio (model: $model)"
       fi
+      ;;
+    github)
+      local model="${provider#*:}"
+      echo "GitHub Models (model: $model)"
       ;;
     *)
       echo "Unknown provider"

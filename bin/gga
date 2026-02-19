@@ -94,7 +94,7 @@ print_help() {
   echo ""
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
-  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model]"
+  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model], github:<model>"
   echo "  FILE_PATTERNS      File patterns to review (default: *)"
   echo "                     Example: *.ts,*.tsx,*.js,*.jsx"
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
@@ -241,7 +241,7 @@ cmd_init() {
 # https://github.com/your-org/gga
 
 # AI Provider (required)
-# Options: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model]
+# Options: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model], github:<model>
 # Examples:
 #   PROVIDER="claude"
 #   PROVIDER="gemini"
@@ -252,6 +252,8 @@ cmd_init() {
 #   PROVIDER="ollama:codellama"
 #   PROVIDER="lmstudio"
 #   PROVIDER="lmstudio:qwen2.5-coder-7b-instruct"
+#   PROVIDER="github:gpt-4o"
+#   PROVIDER="github:deepseek-r1"
 PROVIDER="claude"
 
 # File patterns to include in review (comma-separated)
