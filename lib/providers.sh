@@ -549,7 +549,7 @@ model = sys.argv[1]
 payload = json.dumps({
     'model': model,
     'messages': [
-        {'role': 'system', 'content': 'You are Guardian Angel, a code reviewer.'},
+        {'role': 'system', 'content': 'You are a helpful code review assistant.'},
         {'role': 'user', 'content': prompt}
     ],
     'temperature': 0.2
