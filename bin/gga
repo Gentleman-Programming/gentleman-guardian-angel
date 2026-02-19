@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.6.1"
+VERSION="2.6.2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -94,7 +94,7 @@ print_help() {
   echo ""
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
-  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>"
+  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model]"
   echo "  FILE_PATTERNS      File patterns to review (default: *)"
   echo "                     Example: *.ts,*.tsx,*.js,*.jsx"
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
@@ -241,7 +241,7 @@ cmd_init() {
 # https://github.com/your-org/gga
 
 # AI Provider (required)
-# Options: claude, gemini, codex, opencode, ollama:<model>
+# Options: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model]
 # Examples:
 #   PROVIDER="claude"
 #   PROVIDER="gemini"
@@ -250,6 +250,8 @@ cmd_init() {
 #   PROVIDER="opencode:anthropic/claude-opus-4-5"
 #   PROVIDER="ollama:llama3.2"
 #   PROVIDER="ollama:codellama"
+#   PROVIDER="lmstudio"
+#   PROVIDER="lmstudio:qwen2.5-coder-7b-instruct"
 PROVIDER="claude"
 
 # File patterns to include in review (comma-separated)
