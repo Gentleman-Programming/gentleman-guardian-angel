@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/gga-banner.png" width="600" alt="GGA - Gentleman Guardian Angel">
+  <img width="1024" height="408" alt="image" src="https://github.com/user-attachments/assets/e534ba1e-0044-45c7-a788-b455733c0052" />
 </p>
 
 <p align="center">
