@@ -1,18 +1,20 @@
 <p align="center">
+  <img src="assets/gga-banner.png" width="600" alt="GGA - Gentleman Guardian Angel">
+</p>
+
+<p align="center">
+  <strong>Provider-agnostic code review using AI</strong><br>
+  Use Claude, Gemini, Codex, OpenCode, Ollama, LM Studio, GitHub Models, or any AI to enforce your coding standards.<br>
+  Zero dependencies. Pure Bash. Works everywhere.
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/version-2.7.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/bash-5.0%2B-orange.svg" alt="Bash">
   <img src="https://img.shields.io/badge/homebrew-tap-FBB040.svg" alt="Homebrew">
   <img src="https://img.shields.io/badge/tests-174%20passing-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
-</p>
-
-<h1 align="center">🤖 Gentleman Guardian Angel</h1>
-
-<p align="center">
-  <strong>Provider-agnostic code review using AI</strong><br>
-  Use Claude, Gemini, Codex, OpenCode, Ollama, LM Studio, GitHub Models, or any AI to enforce your coding standards.<br>
-  Zero dependencies. Pure Bash. Works everywhere.
 </p>
 
 <p align="center">
