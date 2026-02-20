@@ -1058,7 +1058,7 @@ cmd_run() {
     # Generate diff hash for deduplication
     local diff_content diff_hash
     diff_content=$(git diff --cached 2>/dev/null || echo "")
-    diff_hash=$(echo "$diff_content" | md5sum 2>/dev/null | cut -d' ' -f1 || echo "")
+    diff_hash=$(echo "$diff_content" | _compute_hash_stdin 2>/dev/null || echo "")
 
     # Save to database
     db_save_review "$project_path" "$project_name" "$git_branch" "$git_commit" \
