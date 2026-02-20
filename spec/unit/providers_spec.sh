@@ -521,18 +521,251 @@ EOF
     End
   End
 
-  Describe 'validate_provider() - ollama model validation'
-    # Ollama validation has logic that checks model format
-    # This can fail BEFORE checking if ollama CLI exists
-    
-    # We need to test the model parsing logic
-    # The function first checks CLI existence, then model
-    # So we can't easily test the model validation without the CLI
-    
-    # Instead, let's test the parsing helper if we had one
-    # For now, we'll skip these or mark them as pending
-    
-    Skip "Requires refactoring validate_provider to separate concerns"
+  Describe 'validate_provider() - with mocked commands'
+    It 'succeeds for claude when CLI exists'
+      command() {
+        case "$2" in
+          claude) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "claude"
+      The status should be success
+    End
+
+    It 'succeeds for gemini when CLI exists'
+      command() {
+        case "$2" in
+          gemini) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "gemini"
+      The status should be success
+    End
+
+    It 'succeeds for codex when CLI exists'
+      command() {
+        case "$2" in
+          codex) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "codex"
+      The status should be success
+    End
+
+    It 'succeeds for opencode when CLI exists'
+      command() {
+        case "$2" in
+          opencode) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "opencode"
+      The status should be success
+    End
+
+    It 'succeeds for ollama:model when CLI exists'
+      command() {
+        case "$2" in
+          ollama) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "ollama:llama3.2"
+      The status should be success
+    End
+
+    It 'fails for ollama without model'
+      command() {
+        case "$2" in
+          ollama) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "ollama"
+      The status should be failure
+      The output should include "requires a model"
+    End
+
+    It 'fails for claude when CLI not found'
+      command() { return 1; }
+
+      When call validate_provider "claude"
+      The status should be failure
+      The output should include "Claude CLI not found"
+    End
+
+    It 'fails for gemini when CLI not found'
+      command() { return 1; }
+
+      When call validate_provider "gemini"
+      The status should be failure
+      The output should include "Gemini CLI not found"
+    End
+
+    It 'fails for codex when CLI not found'
+      command() { return 1; }
+
+      When call validate_provider "codex"
+      The status should be failure
+      The output should include "Codex CLI not found"
+    End
+
+    It 'fails for opencode when CLI not found'
+      command() { return 1; }
+
+      When call validate_provider "opencode"
+      The status should be failure
+      The output should include "OpenCode CLI not found"
+    End
+
+    It 'fails for ollama when CLI not found'
+      command() { return 1; }
+
+      When call validate_provider "ollama:llama3"
+      The status should be failure
+      The output should include "Ollama not found"
+    End
+  End
+
+  Describe 'execute_provider() dispatcher'
+    It 'routes claude to execute_claude'
+      execute_claude() { echo "CLAUDE_CALLED:$1"; }
+
+      When call execute_provider "claude" "test prompt"
+      The output should eq "CLAUDE_CALLED:test prompt"
+    End
+
+    It 'routes gemini to execute_gemini'
+      execute_gemini() { echo "GEMINI_CALLED:$1"; }
+
+      When call execute_provider "gemini" "test prompt"
+      The output should eq "GEMINI_CALLED:test prompt"
+    End
+
+    It 'routes codex to execute_codex'
+      execute_codex() { echo "CODEX_CALLED:$1"; }
+
+      When call execute_provider "codex" "test prompt"
+      The output should eq "CODEX_CALLED:test prompt"
+    End
+
+    It 'routes opencode to execute_opencode without model'
+      execute_opencode() { echo "OPENCODE_CALLED:model=$1:prompt=$2"; }
+
+      When call execute_provider "opencode" "test prompt"
+      The output should eq "OPENCODE_CALLED:model=:prompt=test prompt"
+    End
+
+    It 'routes opencode:model to execute_opencode with model'
+      execute_opencode() { echo "OPENCODE_CALLED:model=$1:prompt=$2"; }
+
+      When call execute_provider "opencode:gpt-4" "test prompt"
+      The output should eq "OPENCODE_CALLED:model=gpt-4:prompt=test prompt"
+    End
+
+    It 'routes ollama:model to execute_ollama'
+      execute_ollama() { echo "OLLAMA_CALLED:model=$1:prompt=$2"; }
+
+      When call execute_provider "ollama:llama3" "test prompt"
+      The output should eq "OLLAMA_CALLED:model=llama3:prompt=test prompt"
+    End
+  End
+
+  Describe 'execute_claude()'
+    It 'pipes prompt to claude CLI with --print flag'
+      claude() {
+        # Capture what was piped to stdin
+        local input
+        input=$(cat)
+        echo "received:$input:args:$*"
+      }
+
+      When call execute_claude "review this code"
+      The output should include "received:review this code"
+      The output should include "--print"
+    End
+
+    It 'returns claude exit status'
+      claude() { return 5; }
+
+      When call execute_claude "test"
+      The status should eq 5
+    End
+  End
+
+  Describe 'execute_gemini()'
+    It 'passes prompt with -p flag'
+      gemini() { echo "args:$*"; }
+
+      When call execute_gemini "review this code"
+      The output should include "-p"
+      The output should include "review this code"
+    End
+
+    It 'returns gemini exit status'
+      gemini() { return 3; }
+
+      When call execute_gemini "test"
+      The status should eq 3
+    End
+  End
+
+  Describe 'execute_codex()'
+    It 'uses exec subcommand'
+      codex() { echo "args:$*"; }
+
+      When call execute_codex "review this code"
+      The output should include "exec"
+      The output should include "review this code"
+    End
+
+    It 'returns codex exit status'
+      codex() { return 7; }
+
+      When call execute_codex "test"
+      The status should eq 7
+    End
+  End
+
+  Describe 'execute_opencode()'
+    It 'uses run subcommand with prompt'
+      opencode() { echo "args:$*"; }
+
+      When call execute_opencode "" "review this code"
+      The output should include "run"
+      The output should include "review this code"
+    End
+
+    It 'includes --model flag when model specified'
+      opencode() { echo "args:$*"; }
+
+      When call execute_opencode "gpt-4" "review this code"
+      The output should include "--model"
+      The output should include "gpt-4"
+    End
+
+    It 'omits --model flag when model is empty'
+      opencode() { echo "args:$*"; }
+
+      When call execute_opencode "" "review this code"
+      The output should not include "--model"
+    End
+
+    It 'returns opencode exit status'
+      opencode() { return 9; }
+
+      When call execute_opencode "" "test"
+      The status should eq 9
+    End
   End
 
   Describe 'validate_provider() - lmstudio'
@@ -568,7 +801,7 @@ EOF
 
   Describe 'provider base extraction'
     # Test the base provider extraction logic
-    
+
     helper_get_base_provider() {
       local provider="$1"
       echo "${provider%%:*}"
