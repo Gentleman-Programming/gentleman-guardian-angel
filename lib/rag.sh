@@ -164,37 +164,64 @@ rag_build_context() {
     while IFS='|' read -r score id proj snippet; do
         [[ -z "$id" ]] && continue
 
-        # Get review details
-        local details status result files
-        details=$(sqlite3 -separator '|' "$db_path" \
-            "SELECT status, result, files FROM reviews WHERE id = $id;" 2>/dev/null | tr -d '\r')
+        # Try structured insights first (compact, higher signal)
+        local insights
+        insights=$(db_get_insight_summaries "$id" 5 2>/dev/null | tr -d '\r')
 
-        IFS='|' read -r status result files <<< "$details"
+        if [[ -n "$insights" ]]; then
+            # Use structured insights (much more compact)
+            local insight_text=""
+            while IFS='|' read -r _rid itype isev ifile iwhat; do
+                [[ -z "$iwhat" ]] && continue
+                insight_text+="  - [$itype|$isev] ${ifile:+$ifile: }$iwhat
+"
+            done <<< "$insights"
 
-        # Truncate long results
-        if [[ ${#result} -gt 400 ]]; then
-            result="${result:0:400}..."
-        fi
+            local entry_tokens=$(( ${#insight_text} / 4 + 30 ))
+            if [[ $((token_count + entry_tokens)) -gt $RAG_MAX_TOKENS ]]; then
+                break
+            fi
 
-        # Check token budget (approximate: 1 token ~ 4 chars)
-        local entry_tokens=$(( ${#result} / 4 + 50 ))
-        if [[ $((token_count + entry_tokens)) -gt $RAG_MAX_TOKENS ]]; then
-            break
-        fi
+            ((review_num++))
+            token_count=$((token_count + entry_tokens))
 
-        ((review_num++))
-        token_count=$((token_count + entry_tokens))
+            local pct
+            pct=$(awk -v s="$score" 'BEGIN { printf "%.0f", s * 100 }')
 
-        # Format entry
-        local pct
-        pct=$(awk -v s="$score" 'BEGIN { printf "%.0f", s * 100 }')
+            context+="
+### Review #$review_num (Relevance: ${pct}%)
+$insight_text---"
+        else
+            # Fallback to raw result (legacy reviews without insights)
+            local details status result files
+            details=$(sqlite3 -separator '|' "$db_path" \
+                "SELECT status, result, files FROM reviews WHERE id = $id;" 2>/dev/null | tr -d '\r')
 
-        context+="
+            IFS='|' read -r status result files <<< "$details"
+
+            # Truncate long results
+            if [[ ${#result} -gt 400 ]]; then
+                result="${result:0:400}..."
+            fi
+
+            local entry_tokens=$(( ${#result} / 4 + 50 ))
+            if [[ $((token_count + entry_tokens)) -gt $RAG_MAX_TOKENS ]]; then
+                break
+            fi
+
+            ((review_num++))
+            token_count=$((token_count + entry_tokens))
+
+            local pct
+            pct=$(awk -v s="$score" 'BEGIN { printf "%.0f", s * 100 }')
+
+            context+="
 ### Review #$review_num (Relevance: ${pct}%)
 - **Status:** $status
 - **Files:** $files
 - **Findings:** $result
 ---"
+        fi
     done <<< "$retrieved"
 
     echo "$context"

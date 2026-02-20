@@ -127,6 +127,41 @@ CREATE INDEX IF NOT EXISTS idx_reviews_project ON reviews(project_name);
 CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
 CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reviews_diff_hash ON reviews(diff_hash);
+
+-- Structured insights extracted from reviews
+CREATE TABLE IF NOT EXISTS review_insights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id INTEGER NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK(type IN (
+        'bugfix','security','pattern','decision','style','performance'
+    )),
+    what TEXT NOT NULL,
+    why TEXT,
+    file_path TEXT,
+    learned TEXT,
+    severity TEXT DEFAULT 'medium' CHECK(severity IN ('low','medium','high','critical')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_insights_type ON review_insights(type);
+CREATE INDEX IF NOT EXISTS idx_insights_review ON review_insights(review_id);
+CREATE INDEX IF NOT EXISTS idx_insights_severity ON review_insights(severity);
+
+-- FTS5 for insight search
+CREATE VIRTUAL TABLE IF NOT EXISTS insights_fts USING fts5(
+    what, why, learned, file_path, type,
+    content='review_insights', content_rowid='id'
+);
+
+CREATE TRIGGER IF NOT EXISTS insights_ai AFTER INSERT ON review_insights BEGIN
+    INSERT INTO insights_fts(rowid, what, why, learned, file_path, type)
+    VALUES (new.id, new.what, new.why, new.learned, new.file_path, new.type);
+END;
+
+CREATE TRIGGER IF NOT EXISTS insights_ad AFTER DELETE ON review_insights BEGIN
+    INSERT INTO insights_fts(insights_fts, rowid, what, why, learned, file_path, type)
+    VALUES ('delete', old.id, old.what, old.why, old.learned, old.file_path, old.type);
+END;
 SQL
 
     echo "$db_path"
@@ -276,6 +311,170 @@ WHERE status = '$status'
 ORDER BY created_at DESC
 LIMIT $limit;
 SQL
+}
+
+# ============================================================================
+# Review Insights
+# ============================================================================
+
+# Save a structured insight extracted from a review
+# Usage: db_save_insight review_id type what [why] [file_path] [learned] [severity]
+db_save_insight() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    local review_id type what why file_path learned severity
+
+    review_id=$(_sql_validate_int "$1" 0)
+    type=$(_sql_escape "$2")
+    what=$(_sql_escape "$3")
+    why=$(_sql_escape "${4:-}")
+    file_path=$(_sql_escape "${5:-}")
+    learned=$(_sql_escape "${6:-}")
+    severity="${7:-medium}"
+
+    # Validate type
+    case "$type" in
+        bugfix|security|pattern|decision|style|performance) ;;
+        *) type="pattern" ;;
+    esac
+
+    # Validate severity
+    case "$severity" in
+        low|medium|high|critical) ;;
+        *) severity="medium" ;;
+    esac
+
+    sqlite3 "$db_path" <<SQL
+INSERT INTO review_insights (review_id, type, what, why, file_path, learned, severity)
+VALUES ($review_id, '$type', '$what', '$why', '$file_path', '$learned', '$severity');
+SQL
+}
+
+# Get insights for a specific review
+# Usage: db_get_insights review_id
+db_get_insights() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    local review_id
+    review_id=$(_sql_validate_int "$1" 0)
+
+    sqlite3 -json "$db_path" <<SQL
+SELECT id, type, what, why, file_path, learned, severity
+FROM review_insights
+WHERE review_id = $review_id
+ORDER BY severity DESC, id ASC;
+SQL
+}
+
+# Search insights across all reviews
+# Usage: db_search_insights query [limit]
+db_search_insights() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    local query limit
+    query=$(_sql_escape "$1")
+    limit=$(_sql_validate_int "${2:-20}" 20)
+
+    sqlite3 -json "$db_path" <<SQL
+SELECT
+    ri.id,
+    ri.review_id,
+    ri.type,
+    ri.what,
+    ri.file_path,
+    ri.severity,
+    r.project_name,
+    r.created_at
+FROM insights_fts
+JOIN review_insights ri ON insights_fts.rowid = ri.id
+JOIN reviews r ON ri.review_id = r.id
+WHERE insights_fts MATCH '$query'
+ORDER BY rank
+LIMIT $limit;
+SQL
+}
+
+# Get compact insight summaries for RAG context building
+# Usage: db_get_insight_summaries review_ids_csv [limit]
+db_get_insight_summaries() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    local review_ids="$1"
+    local limit
+    limit=$(_sql_validate_int "${2:-20}" 20)
+
+    [[ -z "$review_ids" ]] && return 0
+
+    sqlite3 -separator '|' "$db_path" <<SQL
+SELECT
+    ri.review_id,
+    ri.type,
+    ri.severity,
+    ri.file_path,
+    ri.what
+FROM review_insights ri
+WHERE ri.review_id IN ($review_ids)
+ORDER BY
+    CASE ri.severity
+        WHEN 'critical' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'low' THEN 4
+    END,
+    ri.review_id DESC
+LIMIT $limit;
+SQL
+}
+
+# ============================================================================
+# Insight Extraction
+# ============================================================================
+
+# Extract structured insights from an AI review result
+# Parses the review text looking for issues, warnings, and recommendations
+# Usage: extract_review_insights "result_text" review_id
+extract_review_insights() {
+    local result="$1"
+    local review_id="$2"
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+
+    [[ -z "$result" || -z "$review_id" ]] && return 0
+    [[ ! -f "$db_path" ]] && return 0
+
+    local lower_result
+    lower_result=$(printf '%s' "$result" | tr '[:upper:]' '[:lower:]')
+
+    # Detect issue type from content
+    local type="pattern"
+    if printf '%s' "$lower_result" | grep -qE '(injection|xss|csrf|sanitize|vulnerab|insecure|exploit)'; then
+        type="security"
+    elif printf '%s' "$lower_result" | grep -qE '(bug|fix|error|crash|null|undefined|exception)'; then
+        type="bugfix"
+    elif printf '%s' "$lower_result" | grep -qE '(slow|perf|optim|memory|cache|latency|bottleneck)'; then
+        type="performance"
+    elif printf '%s' "$lower_result" | grep -qE '(style|format|naming|convention|indent|whitespace)'; then
+        type="style"
+    fi
+
+    # Detect severity
+    local severity="medium"
+    if printf '%s' "$lower_result" | grep -qE '(critical|severe|urgent|dangerous|vulnerability)'; then
+        severity="critical"
+    elif printf '%s' "$lower_result" | grep -qE '(warning|should|consider|recommend)'; then
+        severity="medium"
+    elif printf '%s' "$lower_result" | grep -qE '(minor|trivial|nit|cosmetic)'; then
+        severity="low"
+    fi
+
+    # Extract file paths mentioned in review
+    local file_paths
+    file_paths=$(printf '%s' "$result" | grep -oE '[a-zA-Z0-9_/-]+\.(ts|js|tsx|jsx|py|go|rs|sh|java|rb|php)(:[0-9]+)?' | head -5 | tr '\n' ', ' | sed 's/,$//')
+
+    # Extract the main finding as "what" (first substantive line after STATUS)
+    local what
+    what=$(printf '%s' "$result" | grep -v '^STATUS:' | grep -v '^$' | head -3 | tr '\n' ' ' | sed 's/  */ /g')
+    # Truncate to 200 chars
+    [[ ${#what} -gt 200 ]] && what="${what:0:200}..."
+
+    [[ -z "$what" ]] && return 0
+
+    db_save_insight "$review_id" "$type" "$what" "" "$file_paths" "" "$severity"
 }
 
 # ============================================================================

@@ -1065,6 +1065,14 @@ _save_review_to_db() {
     "$files_list" "$files_count" "$diff_content" "$diff_hash" \
     "$result" "$review_status" "$provider" "" "$duration_ms" 2>/dev/null || true
 
+  # Extract structured insights from the review result
+  local review_id
+  review_id=$(sqlite3 "${GGA_DB_PATH:-$HOME/.gga/gga.db}" \
+    "SELECT id FROM reviews WHERE diff_hash='$diff_hash' ORDER BY id DESC LIMIT 1;" 2>/dev/null | tr -d '\r')
+  if [[ -n "$review_id" ]]; then
+    extract_review_insights "$result" "$review_id" 2>/dev/null || true
+  fi
+
   # Learn from review using Hebbian memory (if available)
   if source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
     hebbian_learn_from_review "$files_list" "$diff_content" "$result" "$review_status" 2>/dev/null || true
