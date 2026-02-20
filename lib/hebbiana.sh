@@ -64,6 +64,27 @@ CREATE INDEX IF NOT EXISTS idx_assoc_a ON associations(concept_a);
 CREATE INDEX IF NOT EXISTS idx_assoc_b ON associations(concept_b);
 CREATE INDEX IF NOT EXISTS idx_assoc_weight ON associations(weight DESC);
 CREATE INDEX IF NOT EXISTS idx_concepts_type ON concepts(type);
+
+-- Learning sessions: group concepts by commit/PR
+CREATE TABLE IF NOT EXISTS learning_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_type TEXT NOT NULL DEFAULT 'commit',  -- commit, pr, manual
+    session_ref TEXT,                              -- commit hash or PR number
+    project TEXT,
+    concepts_count INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Concepts per session for cross-file learning
+CREATE TABLE IF NOT EXISTS session_concepts (
+    session_id INTEGER NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+    concept TEXT NOT NULL,
+    activation REAL DEFAULT 1.0,
+    UNIQUE(session_id, concept)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_ref ON learning_sessions(session_ref);
+CREATE INDEX IF NOT EXISTS idx_session_concepts ON session_concepts(session_id);
 SQL
 }
 
@@ -556,4 +577,147 @@ hebbian_learn_from_review() {
     if [[ -n "$concepts" ]]; then
         hebbian_learn "$concepts" "review" >/dev/null 2>&1
     fi
+
+    # If a session is active, add concepts to it
+    if [[ -n "${_HEBBIAN_SESSION_ID:-}" ]]; then
+        _session_add_concepts "$concepts"
+    fi
+}
+
+# ============================================================================
+# Session Cohesion
+# ============================================================================
+
+# Active session ID (module-level state)
+_HEBBIAN_SESSION_ID=""
+
+# Session cohesion boost factor (intra-session associations get stronger)
+HEBBIAN_SESSION_BOOST="${GGA_HEBBIAN_SESSION_BOOST:-1.5}"
+
+# Start a learning session (groups concepts across files in one commit)
+# Usage: hebbian_start_session "commit_hash" [project] [type]
+# Returns: Session ID
+hebbian_start_session() {
+    local session_ref="$1"
+    local project="${2:-}"
+    local session_type="${3:-commit}"
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+
+    [[ "$HEBBIAN_ENABLED" != "true" ]] && return 0
+    [[ -z "$session_ref" ]] && return 1
+    [[ ! -f "$db_path" ]] && return 1
+
+    hebbian_init_schema
+
+    local safe_ref safe_proj safe_type
+    safe_ref=$(_hebb_sql_escape "$session_ref")
+    safe_proj=$(_hebb_sql_escape "$project")
+    safe_type=$(_hebb_sql_escape "$session_type")
+
+    sqlite3 "$db_path" \
+        "INSERT INTO learning_sessions (session_type, session_ref, project)
+         VALUES ('$safe_type', '$safe_ref', '$safe_proj');" 2>/dev/null
+
+    _HEBBIAN_SESSION_ID=$(sqlite3 "$db_path" \
+        "SELECT id FROM learning_sessions WHERE session_ref='$safe_ref'
+         ORDER BY id DESC LIMIT 1;" 2>/dev/null | tr -d '\r')
+
+    echo "$_HEBBIAN_SESSION_ID"
+}
+
+# Add concepts to the active session
+# Usage: _session_add_concepts "concepts_string"
+_session_add_concepts() {
+    local concepts_str="$1"
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+
+    [[ -z "$_HEBBIAN_SESSION_ID" ]] && return 0
+    [[ -z "$concepts_str" ]] && return 0
+
+    while IFS= read -r concept; do
+        [[ -z "$concept" ]] && continue
+        local safe_concept
+        safe_concept=$(_hebb_sql_escape "$concept")
+        sqlite3 "$db_path" \
+            "INSERT OR IGNORE INTO session_concepts (session_id, concept)
+             VALUES ($_HEBBIAN_SESSION_ID, '$safe_concept');" 2>/dev/null
+    done <<< "$concepts_str"
+
+    # Update count
+    sqlite3 "$db_path" \
+        "UPDATE learning_sessions SET concepts_count = (
+            SELECT COUNT(*) FROM session_concepts WHERE session_id = $_HEBBIAN_SESSION_ID
+         ) WHERE id = $_HEBBIAN_SESSION_ID;" 2>/dev/null
+}
+
+# End session and learn cross-file associations with boost
+# Usage: hebbian_end_session
+hebbian_end_session() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+
+    [[ -z "$_HEBBIAN_SESSION_ID" ]] && return 0
+    [[ ! -f "$db_path" ]] && return 0
+
+    # Get all concepts from this session
+    local session_concepts
+    session_concepts=$(sqlite3 "$db_path" \
+        "SELECT concept FROM session_concepts WHERE session_id = $_HEBBIAN_SESSION_ID;" \
+        2>/dev/null | tr -d '\r')
+
+    if [[ -n "$session_concepts" ]]; then
+        local count=0
+        while IFS= read -r concept; do
+            [[ -n "$concept" ]] && ((count++))
+        done <<< "$session_concepts"
+
+        # Learn all session concepts together with boosted activation
+        if [[ $count -ge 2 ]]; then
+            local concepts_arr=()
+            while IFS= read -r concept; do
+                [[ -n "$concept" ]] && concepts_arr+=("$concept")
+            done <<< "$session_concepts"
+
+            local n=${#concepts_arr[@]}
+            local pairs=0
+            for ((i=0; i<n; i++)); do
+                for ((j=i+1; j<n; j++)); do
+                    hebbian_update_association \
+                        "${concepts_arr[$i]}" "${concepts_arr[$j]}" \
+                        "$HEBBIAN_SESSION_BOOST" "$HEBBIAN_SESSION_BOOST" "session"
+                    ((pairs++))
+                done
+            done
+        fi
+    fi
+
+    local sid="$_HEBBIAN_SESSION_ID"
+    _HEBBIAN_SESSION_ID=""
+    echo "$sid"
+}
+
+# Get session history
+# Usage: hebbian_session_stats [limit]
+hebbian_session_stats() {
+    local limit="${1:-10}"
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+
+    [[ ! -f "$db_path" ]] && { echo "No database found"; return 1; }
+
+    local has_table
+    has_table=$(sqlite3 "$db_path" \
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='learning_sessions';" \
+        2>/dev/null | tr -d '\r')
+    [[ "${has_table:-0}" -eq 0 ]] && { echo "No sessions recorded"; return 0; }
+
+    local total
+    total=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM learning_sessions;" 2>/dev/null | tr -d '\r')
+
+    echo "Session History ($total total):"
+    sqlite3 -separator '|' "$db_path" \
+        "SELECT session_type, session_ref, project, concepts_count, created_at
+         FROM learning_sessions ORDER BY id DESC LIMIT $limit;" 2>/dev/null | \
+        tr -d '\r' | while IFS='|' read -r stype sref sproj scount sdate; do
+        printf "  [%s] %s %s (%d concepts) - %s\n" \
+            "$stype" "${sref:0:8}" "${sproj:+($sproj)}" "$scount" "$sdate"
+    done
 }

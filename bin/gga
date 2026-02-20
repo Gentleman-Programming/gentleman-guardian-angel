@@ -975,12 +975,17 @@ cmd_memory() {
       log_info "Consolidating memory (decay $days days)..."
       hebbian_decay "$days"
       ;;
+    sessions)
+      local limit="${1:-10}"
+      hebbian_session_stats "$limit"
+      ;;
     help|*)
       echo -e "${BOLD}Usage:${NC} gga memory <subcommand>"
       echo ""
       echo -e "${BOLD}Subcommands:${NC}"
       echo "  show [concept]    Show associations (all or for a specific concept)"
       echo "  stats             Show memory statistics"
+      echo "  sessions [limit]  Show learning session history"
       echo "  init              Initialize Hebbian memory tables"
       echo "  check             Check if memory is available"
       echo "  consolidate [days] Apply decay and remove weak associations"
@@ -989,6 +994,7 @@ cmd_memory() {
       echo "  gga memory show                    # Show all associations"
       echo "  gga memory show pattern:security   # Show associations for security"
       echo "  gga memory stats                   # Show statistics"
+      echo "  gga memory sessions                # Show recent sessions"
       echo "  gga memory consolidate 30          # Decay 30 days worth"
       echo ""
       ;;
@@ -1073,9 +1079,13 @@ _save_review_to_db() {
     extract_review_insights "$result" "$review_id" 2>/dev/null || true
   fi
 
-  # Learn from review using Hebbian memory (if available)
+  # Learn from review using Hebbian memory (with session cohesion)
   if source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
+    # Start a session to group all concepts from this commit
+    hebbian_start_session "$git_commit" "$project_name" "commit" 2>/dev/null || true
     hebbian_learn_from_review "$files_list" "$diff_content" "$result" "$review_status" 2>/dev/null || true
+    # End session: learns cross-file associations with boost
+    hebbian_end_session 2>/dev/null || true
   fi
 }
 
