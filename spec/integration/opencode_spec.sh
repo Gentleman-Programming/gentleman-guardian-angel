@@ -12,12 +12,19 @@
 Describe 'OpenCode Integration'
   Include "$LIB_DIR/providers.sh"
 
-  # Skip tests if OpenCode is not available
+  # Skip tests if OpenCode is not available or not responding
   skip_if_no_opencode() {
-    ! command -v opencode &> /dev/null
+    # Check if command exists
+    ! command -v opencode &> /dev/null && return 0
+    # Check if service is responding (quick test)
+    local test_result
+    test_result=$(opencode --prompt "test" 2>&1) || return 0
+    [[ "$test_result" == *"Unable to connect"* ]] && return 0
+    [[ "$test_result" == *"Error"* ]] && return 0
+    return 1
   }
 
-  Skip if "OpenCode not available" skip_if_no_opencode
+  Skip if "OpenCode not available or not responding" skip_if_no_opencode
 
   Describe 'validate_provider()'
     It 'validates opencode provider successfully'

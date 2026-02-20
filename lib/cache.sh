@@ -16,40 +16,32 @@ CACHE_DIR="$HOME/.cache/gga"
 # Cross-platform Hash Helper
 # ============================================================================
 # macOS uses 'shasum -a 256', Linux uses 'sha256sum'
-# This function abstracts the difference
+# Cache the command at module load to avoid repeated command -v calls
 
-_get_hash_command() {
-  if command -v sha256sum &>/dev/null; then
-    echo "sha256sum"
-  elif command -v shasum &>/dev/null; then
-    echo "shasum -a 256"
-  else
-    echo ""
-  fi
-}
+# Detect hash command once at load time
+_HASH_CMD=""
+if command -v sha256sum &>/dev/null; then
+  _HASH_CMD="sha256sum"
+elif command -v shasum &>/dev/null; then
+  _HASH_CMD="shasum -a 256"
+fi
 
 _compute_hash() {
-  local hash_cmd
-  hash_cmd=$(_get_hash_command)
-  
-  if [[ -z "$hash_cmd" ]]; then
+  if [[ -z "$_HASH_CMD" ]]; then
     echo "ERROR: No hash command available (need sha256sum or shasum)" >&2
     return 1
   fi
-  
-  $hash_cmd "$@" | cut -d' ' -f1
+
+  $_HASH_CMD "$@" | cut -d' ' -f1
 }
 
 _compute_hash_stdin() {
-  local hash_cmd
-  hash_cmd=$(_get_hash_command)
-  
-  if [[ -z "$hash_cmd" ]]; then
+  if [[ -z "$_HASH_CMD" ]]; then
     echo "ERROR: No hash command available (need sha256sum or shasum)" >&2
     return 1
   fi
-  
-  $hash_cmd | cut -d' ' -f1
+
+  $_HASH_CMD | cut -d' ' -f1
 }
 
 # ============================================================================
