@@ -5,21 +5,24 @@ Describe 'CI mode (--ci)'
   setup() {
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR" || exit 1
-    git init --quiet
+    git init --quiet 2>/dev/null
     git config user.email "test@test.com"
     git config user.name "Test User"
-    
+    # Avoid CRLF warnings on Windows
+    git config core.autocrlf false
+    git config core.safecrlf false
+
     # Create initial commit
     echo "initial" > README.md
-    git add README.md
-    git commit -m "initial commit" --quiet
-    
+    git add README.md 2>/dev/null
+    git commit -m "initial commit" --quiet 2>/dev/null
+
     # Create config and rules
     echo 'PROVIDER="claude"' > .gga
     echo "# Rules" > AGENTS.md
-    git add .gga AGENTS.md
-    git commit -m "add config" --quiet
-    
+    git add .gga AGENTS.md 2>/dev/null
+    git commit -m "add config" --quiet 2>/dev/null
+
     GGA_BIN="$PROJECT_ROOT/bin/gga"
   }
 
@@ -35,9 +38,9 @@ Describe 'CI mode (--ci)'
     It 'detects files changed in last commit'
       # Create a new commit with a test file
       echo "test content" > test.ts
-      git add test.ts
-      git commit -m "add test file" --quiet
-      
+      git add test.ts 2>/dev/null
+      git commit -m "add test file" --quiet 2>/dev/null
+
       # Run in CI mode - should find test.ts
       When call "$GGA_BIN" run --ci
       The output should include "test.ts"
@@ -49,13 +52,13 @@ Describe 'CI mode (--ci)'
       echo "ts content" > file.ts
       echo "js content" > file.js
       echo "md content" > file.md
-      git add .
-      git commit -m "add files" --quiet
-      
+      git add . 2>/dev/null
+      git commit -m "add files" --quiet 2>/dev/null
+
       # Update config to only review .ts files
       echo 'PROVIDER="claude"' > .gga
       echo 'FILE_PATTERNS="*.ts"' >> .gga
-      
+
       When call "$GGA_BIN" run --ci
       The output should include "file.ts"
       The output should not include "file.js"
@@ -66,7 +69,7 @@ Describe 'CI mode (--ci)'
       # Last commit has AGENTS.md which doesn't match *.ts pattern
       echo 'PROVIDER="claude"' > .gga
       echo 'FILE_PATTERNS="*.ts"' >> .gga
-      
+
       When call "$GGA_BIN" run --ci
       The output should include "No matching files changed in last commit"
       The status should be success
@@ -74,9 +77,9 @@ Describe 'CI mode (--ci)'
 
     It 'disables cache in CI mode'
       echo "test" > test.ts
-      git add test.ts
-      git commit -m "add test" --quiet
-      
+      git add test.ts 2>/dev/null
+      git commit -m "add test" --quiet 2>/dev/null
+
       When call "$GGA_BIN" run --ci
       The output should include "disabled (CI mode)"
     End
@@ -122,14 +125,14 @@ Describe 'CI mode (--ci)'
     It 'does not include files that were deleted'
       # Create and commit a file
       echo "content" > to_delete.ts
-      git add to_delete.ts
-      git commit -m "add file" --quiet
-      
+      git add to_delete.ts 2>/dev/null
+      git commit -m "add file" --quiet 2>/dev/null
+
       # Delete it in next commit
       rm to_delete.ts
-      git add to_delete.ts
-      git commit -m "delete file" --quiet
-      
+      git add to_delete.ts 2>/dev/null
+      git commit -m "delete file" --quiet 2>/dev/null
+
       # CI mode should not try to review the deleted file
       When call "$GGA_BIN" run --ci
       The output should not include "to_delete.ts"

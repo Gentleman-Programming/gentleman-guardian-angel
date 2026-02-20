@@ -225,9 +225,9 @@ execute_claude() {
 
 execute_gemini() {
   local prompt="$1"
-  
+
   if ! is_gemini_authenticated; then
-    echo -e "${RED}❌ Gemini CLI is not authenticated${NC}" >&2
+    echo -e "${RED}Gemini CLI is not authenticated${NC}" >&2
     echo ""
     echo "Please log in to Gemini CLI first:"
     echo "  gemini login"
@@ -235,9 +235,13 @@ execute_gemini() {
     echo "Or visit: https://gemini.google.com"
     return 1
   fi
-  
-  gemini -p "$prompt" 2>&1
-  return $?
+
+  # Gemini CLI in headless mode
+  # Using stdin to pass prompt (avoids ARG_MAX limits for large prompts)
+  # --yolo flag auto-approves all tool calls (required for CI/non-interactive)
+  # See: https://geminicli.com/docs/cli/headless/
+  printf '%s' "$prompt" | gemini --yolo 2>&1
+  return "${PIPESTATUS[1]}"
 }
 
 is_gemini_authenticated() {
