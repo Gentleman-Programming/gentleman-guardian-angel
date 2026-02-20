@@ -8,6 +8,28 @@
 # ============================================================================
 
 # ============================================================================
+# Privacy Helpers
+# ============================================================================
+
+# Strip sensitive data from text before storage
+# Two layers: explicit <private> tags + common secret patterns
+# Usage: _strip_private "text with secrets"
+# Returns: text with secrets replaced by [REDACTED]
+_strip_private() {
+    local text="$1"
+    [[ -z "$text" ]] && return 0
+
+    printf '%s' "$text" | sed -E \
+        -e 's/<private>[^<]*<\/private>/[REDACTED]/g' \
+        -e 's/(sk-|sk_live_|sk_test_)[a-zA-Z0-9_-]{10,}/[REDACTED]/g' \
+        -e 's/(ghp_|gho_|ghu_|ghs_|ghr_)[a-zA-Z0-9]{10,}/[REDACTED]/g' \
+        -e 's/AIza[a-zA-Z0-9_-]{30,}/[REDACTED]/g' \
+        -e 's/(Bearer|token) [a-zA-Z0-9._-]{20,}/\1 [REDACTED]/gi' \
+        -e 's/(password|secret|api_key|apikey|api_secret|access_token|private_key)=[^ "'\'']+/\1=[REDACTED]/gi' \
+        -e 's/-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----[^-]*-----END (RSA |EC |OPENSSH )?PRIVATE KEY-----/[REDACTED_KEY]/g'
+}
+
+# ============================================================================
 # SQL Security Helpers
 # ============================================================================
 
@@ -119,6 +141,11 @@ SQL
 db_save_review() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
 
+    # Strip sensitive data before storage (Layer 2: store-level)
+    local clean_diff clean_result
+    clean_diff=$(_strip_private "$7")
+    clean_result=$(_strip_private "$9")
+
     # Sanitize all string inputs
     local project_path project_name git_branch git_commit files diff_content diff_hash result status provider model
     project_path=$(_sql_escape "$1")
@@ -126,9 +153,9 @@ db_save_review() {
     git_branch=$(_sql_escape "$3")
     git_commit=$(_sql_escape "$4")
     files=$(_sql_escape "$5")
-    diff_content=$(_sql_escape "$7")
+    diff_content=$(_sql_escape "$clean_diff")
     diff_hash=$(_sql_escape "$8")
-    result=$(_sql_escape "$9")
+    result=$(_sql_escape "$clean_result")
     provider=$(_sql_escape "${11}")
     model=$(_sql_escape "${12:-}")
 
