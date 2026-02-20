@@ -90,6 +90,7 @@ print_help() {
   echo "  search <query>    Search past reviews (FTS5)"
   echo "  predict <file>    Predict issues using Hebbian memory"
   echo "  memory            Manage Hebbian memory network"
+  echo "  engram            Export insights to Engram format (optional)"
   echo "  cache clear       Clear cache for current project"
   echo "  cache clear-all   Clear all cached data"
   echo "  cache status      Show cache status"
@@ -1033,6 +1034,64 @@ cmd_predict() {
   hebbian_predict "$input"
 }
 
+# ============================================================================
+# Engram Bridge Command
+# ============================================================================
+
+cmd_engram() {
+  local subcmd="${1:-help}"
+  shift 2>/dev/null || true
+
+  print_banner
+  load_env_config
+
+  # Source engram bridge module
+  # shellcheck source=lib/engram_bridge.sh
+  if ! source "$LIB_DIR/engram_bridge.sh" 2>/dev/null; then
+    log_error "Engram bridge module not available"
+    exit 1
+  fi
+
+  case "$subcmd" in
+    export)
+      local review_id="${1:-}"
+      if [[ -z "$review_id" ]]; then
+        log_error "Please provide a review ID"
+        echo "Usage: gga engram export <review_id> [output_dir]"
+        exit 1
+      fi
+      local output_dir="${2:-}"
+      engram_export_review "$review_id" "$output_dir"
+      ;;
+    recent)
+      local days="${1:-7}"
+      local output_dir="${2:-}"
+      engram_export_recent "$days" "$output_dir"
+      ;;
+    check)
+      engram_check
+      ;;
+    help|*)
+      echo -e "${BOLD}Usage:${NC} gga engram <subcommand>"
+      echo ""
+      echo -e "${BOLD}Subcommands:${NC}"
+      echo "  export <id> [dir]  Export insights for a review to Engram JSON"
+      echo "  recent [days] [dir] Export recent insights (default: 7 days)"
+      echo "  check              Check if bridge is available"
+      echo ""
+      echo -e "${BOLD}Configuration:${NC}"
+      echo "  GGA_ENGRAM_ENABLED=true     Enable the bridge"
+      echo "  GGA_ENGRAM_OUTPUT_DIR=path  Default output directory"
+      echo ""
+      echo -e "${BOLD}Examples:${NC}"
+      echo "  gga engram export 42           # Export review 42 as JSON (stdout)"
+      echo "  gga engram export 42 ./engram  # Export to directory"
+      echo "  gga engram recent 30 ./engram  # Export last 30 days"
+      echo ""
+      ;;
+  esac
+}
+
 # Save review results to SQLite database and trigger Hebbian learning
 # Parameters: review_status files_to_review result provider duration_ms
 _save_review_to_db() {
@@ -1668,6 +1727,10 @@ main() {
     predict)
       shift
       cmd_predict "$@"
+      ;;
+    engram)
+      shift
+      cmd_engram "$@"
       ;;
     version|--version|-v)
       print_version
