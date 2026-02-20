@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.6.2"
+VERSION="2.7.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -18,6 +18,8 @@ LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 source "$LIB_DIR/providers.sh"
 # shellcheck source=lib/cache.sh
 source "$LIB_DIR/cache.sh"
+# shellcheck source=lib/pr_mode.sh
+source "$LIB_DIR/pr_mode.sh"
 
 # ============================================================================
 # Signal Handling - Graceful cleanup on interruption
@@ -50,6 +52,7 @@ NC='\033[0m' # No Color
 DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
 DEFAULT_STRICT_MODE="true"
+DEFAULT_TIMEOUT="300"  # 5 minutes - generous default for large reviews
 
 # ============================================================================
 # Helper Functions
@@ -87,6 +90,9 @@ print_help() {
   echo "  --no-cache        Force review all files, ignoring cache"
   echo "  --ci              CI mode: review files changed in last commit (HEAD~1..HEAD)"
   echo "                    Use this in GitLab CI, GitHub Actions, etc."
+  echo "  --pr-mode         PR mode: review all files changed in the full PR"
+  echo "                    Auto-detects base branch (main/master/develop)"
+  echo "  --diff-only       With --pr-mode: send only diffs (faster, cheaper)"
   echo ""
   echo -e "${BOLD}CONFIGURATION:${NC}"
   echo "  Create a ${CYAN}.gga${NC} file in your project root or"
@@ -94,13 +100,15 @@ print_help() {
   echo ""
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
-  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model]"
+  echo "                     Values: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model], github:<model>"
   echo "  FILE_PATTERNS      File patterns to review (default: *)"
   echo "                     Example: *.ts,*.tsx,*.js,*.jsx"
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
   echo "                     Example: *.test.ts,*.spec.ts,*.d.ts"
   echo "  RULES_FILE         File containing review rules (default: AGENTS.md)"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
+  echo "  TIMEOUT            Max seconds to wait for AI response (default: 300)"
+  echo "  PR_BASE_BRANCH     Base branch for --pr-mode (default: auto-detect)"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init               # Create sample config"
@@ -109,10 +117,13 @@ print_help() {
   echo "  gga run                # Run review (with cache)"
   echo "  gga run --no-cache     # Run review (ignore cache)"
   echo "  gga run --ci           # Run review in CI (last commit)"
+  echo "  gga run --pr-mode      # Review full PR changes"
+  echo "  gga run --pr-mode --diff-only  # Review PR diffs only"
   echo "  gga cache status       # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
   echo "  GGA_PROVIDER      Override provider from config"
+  echo "  GGA_TIMEOUT       Override timeout from config (seconds)"
   echo ""
 }
 
@@ -147,6 +158,8 @@ load_config() {
   EXCLUDE_PATTERNS=""
   RULES_FILE="$DEFAULT_RULES_FILE"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
+  TIMEOUT="$DEFAULT_TIMEOUT"
+  PR_BASE_BRANCH=""
 
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
@@ -165,6 +178,9 @@ load_config() {
   # Environment variable overrides everything
   if [[ -n "$GGA_PROVIDER" ]]; then
     PROVIDER="$GGA_PROVIDER"
+  fi
+  if [[ -n "${GGA_TIMEOUT:-}" ]]; then
+    TIMEOUT="$GGA_TIMEOUT"
   fi
 }
 
@@ -211,6 +227,12 @@ cmd_config() {
   fi
   echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
+  echo -e "  TIMEOUT:           ${CYAN}${TIMEOUT}s${NC}"
+  if [[ -n "${PR_BASE_BRANCH:-}" ]]; then
+    echo -e "  PR_BASE_BRANCH:    ${CYAN}$PR_BASE_BRANCH${NC}"
+  else
+    echo -e "  PR_BASE_BRANCH:    ${YELLOW}auto-detect${NC}"
+  fi
   echo ""
 
   # Check if rules file exists
@@ -241,7 +263,7 @@ cmd_init() {
 # https://github.com/your-org/gga
 
 # AI Provider (required)
-# Options: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model]
+# Options: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model], github:<model>
 # Examples:
 #   PROVIDER="claude"
 #   PROVIDER="gemini"
@@ -252,6 +274,8 @@ cmd_init() {
 #   PROVIDER="ollama:codellama"
 #   PROVIDER="lmstudio"
 #   PROVIDER="lmstudio:qwen2.5-coder-7b-instruct"
+#   PROVIDER="github:gpt-4o"
+#   PROVIDER="github:deepseek-r1"
 PROVIDER="claude"
 
 # File patterns to include in review (comma-separated)
@@ -276,6 +300,15 @@ RULES_FILE="AGENTS.md"
 # Strict mode: fail if AI response is ambiguous
 # Default: true
 STRICT_MODE="true"
+
+# Timeout in seconds for AI provider response
+# Default: 300 (5 minutes)
+# Increase for large changesets or slow connections
+TIMEOUT="300"
+
+# Base branch for --pr-mode (auto-detects main/master/develop if empty)
+# Default: auto-detect
+# PR_BASE_BRANCH="main"
 EOF
 
   log_success "Created config file: $PROJECT_CONFIG"
@@ -558,6 +591,8 @@ cmd_cache() {
 cmd_run() {
   local use_cache=true
   local ci_mode=false
+  local pr_mode=false
+  local diff_only=false
   local commit_msg_file=""
   
   # Parse arguments
@@ -570,6 +605,13 @@ cmd_run() {
         ci_mode=true
         use_cache=false  # Cache doesn't make sense in CI
         ;;
+      --pr-mode)
+        pr_mode=true
+        use_cache=false  # Cache doesn't make sense in PR mode
+        ;;
+      --diff-only)
+        diff_only=true
+        ;;
       *)
         # Non-flag argument is the commit message file (from commit-msg hook)
         if [[ -f "$arg" ]]; then
@@ -578,6 +620,11 @@ cmd_run() {
         ;;
     esac
   done
+  
+  # Validate flag combinations
+  if ! validate_pr_mode_flags "$pr_mode" "$diff_only"; then
+    exit 1
+  fi
   
   print_banner
   load_config
@@ -626,13 +673,21 @@ cmd_run() {
   fi
   
   # Mode status
-  if [[ "$ci_mode" == true ]]; then
+  if [[ "$pr_mode" == true ]]; then
+    if [[ "$diff_only" == true ]]; then
+      log_info "Mode: ${CYAN}PR (diff-only review)${NC}"
+    else
+      log_info "Mode: ${CYAN}PR (full file review)${NC}"
+    fi
+  elif [[ "$ci_mode" == true ]]; then
     log_info "Mode: ${CYAN}CI (reviewing last commit)${NC}"
   fi
   
   # Cache status
   if [[ "$use_cache" == true ]]; then
     log_info "Cache: ${GREEN}enabled${NC}"
+  elif [[ "$pr_mode" == true ]]; then
+    log_info "Cache: ${YELLOW}disabled (PR mode)${NC}"
   elif [[ "$ci_mode" == true ]]; then
     log_info "Cache: ${YELLOW}disabled (CI mode)${NC}"
   else
@@ -642,7 +697,27 @@ cmd_run() {
 
   # Get files to review based on mode
   local FILES_TO_CHECK
-  if [[ "$ci_mode" == true ]]; then
+  local pr_range=""
+  local pr_base=""
+  if [[ "$pr_mode" == true ]]; then
+    # PR mode: get files changed in the full PR range
+    if ! pr_range=$(get_pr_range "${PR_BASE_BRANCH:-}"); then
+      log_error "Could not determine PR range"
+      echo ""
+      echo "Set PR_BASE_BRANCH in your .gga config to specify the base branch."
+      echo "  Example: PR_BASE_BRANCH=\"main\""
+      echo ""
+      exit 1
+    fi
+    pr_base="${pr_range%...*}"
+    log_info "PR range: ${CYAN}$pr_range${NC}"
+    FILES_TO_CHECK=$(get_pr_files "$pr_range" "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
+    if [[ -z "$FILES_TO_CHECK" ]]; then
+      log_warning "No matching files changed in PR"
+      echo ""
+      exit 0
+    fi
+  elif [[ "$ci_mode" == true ]]; then
     FILES_TO_CHECK=$(get_ci_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
     if [[ -z "$FILES_TO_CHECK" ]]; then
       log_warning "No matching files changed in last commit"
@@ -721,23 +796,57 @@ cmd_run() {
     log_info "Including commit message in review"
   fi
 
-  # Build prompt only with files to review
-  # In CI mode, read from filesystem; otherwise read from staging area
-  local use_staged="true"
-  if [[ "$ci_mode" == "true" ]]; then
-    use_staged="false"
+  # Build prompt based on mode
+  if [[ "$pr_mode" == "true" ]]; then
+    # PR mode: use dedicated PR prompt builder
+    local pr_diff=""
+    if [[ "$diff_only" == "true" ]]; then
+      pr_diff=$(get_pr_diff "$pr_range")
+    fi
+    PROMPT=$(build_pr_prompt "$RULES" "$files_to_review" "$diff_only" "$pr_diff" "$pr_base")
+  else
+    # Normal/CI mode: use standard prompt builder
+    # In CI mode, read from filesystem; otherwise read from staging area
+    local use_staged="true"
+    if [[ "$ci_mode" == "true" ]]; then
+      use_staged="false"
+    fi
+    PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
   fi
-  PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
 
-  # Execute review
-  log_info "Sending to $PROVIDER for review..."
+  # Execute review with timeout and progress feedback
+  log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
   echo ""
 
-  RESULT=$(execute_provider "$PROVIDER" "$PROMPT")
+  # Temporarily disable set -e to capture exit status properly
+  # (bash 3.2 on macOS can exit on non-zero in command substitution)
+  set +e
+  RESULT=$(execute_provider_with_timeout "$PROVIDER" "$PROMPT" "$TIMEOUT")
   EXEC_STATUS=$?
+  set -e
+
+  if [[ $EXEC_STATUS -eq 124 ]]; then
+    log_error "Provider timed out after ${TIMEOUT}s"
+    echo ""
+    echo "The AI provider did not respond in time. This can happen with:"
+    echo "  - Very large changesets (many files)"
+    echo "  - Slow network or API rate limiting"
+    echo ""
+    echo "Try: Increase TIMEOUT in .gga config, or review fewer files."
+    echo ""
+    if [[ "$STRICT_MODE" == "true" ]]; then
+      exit 1
+    fi
+    exit 0
+  fi
 
   if [[ $EXEC_STATUS -ne 0 ]]; then
-    log_error "Provider execution failed"
+    log_error "Provider execution failed (exit code: $EXEC_STATUS)"
+    if [[ -n "$RESULT" ]]; then
+      echo ""
+      echo "$RESULT"
+      echo ""
+    fi
     if [[ "$STRICT_MODE" == "true" ]]; then
       exit 1
     fi
