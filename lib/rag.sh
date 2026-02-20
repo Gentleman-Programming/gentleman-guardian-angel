@@ -15,6 +15,10 @@ RAG_MAX_TOKENS="${GGA_RAG_MAX_TOKENS:-2000}"
 RAG_RECENCY_BOOST="${GGA_RAG_RECENCY_BOOST:-0.1}"
 RAG_RECENCY_DAYS="${GGA_RAG_RECENCY_DAYS:-30}"
 
+# Progressive disclosure thresholds (score 0.0-1.0)
+RAG_DISCLOSURE_HIGH="${GGA_RAG_DISCLOSURE_HIGH:-0.7}"    # Full detail
+RAG_DISCLOSURE_MED="${GGA_RAG_DISCLOSURE_MED:-0.5}"      # Timeline/insight detail
+
 # ============================================================================
 # Pattern Extraction
 # ============================================================================
@@ -147,9 +151,14 @@ rag_retrieve() {
 # Context Building
 # ============================================================================
 
-# Build markdown context from retrieved reviews
+# Build markdown context from retrieved reviews with progressive disclosure
 # Usage: rag_build_context "retrieved_results"
 # Returns: Formatted markdown context string
+#
+# Progressive disclosure levels based on relevance score:
+#   High (>=70%): Full detail - insights + raw findings + status
+#   Medium (>=50%): Insight summaries with file context
+#   Low (<50%): One-line compact summaries only
 rag_build_context() {
     local retrieved="$1"
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
@@ -164,18 +173,65 @@ rag_build_context() {
     while IFS='|' read -r score id proj snippet; do
         [[ -z "$id" ]] && continue
 
-        # Try structured insights first (compact, higher signal)
+        # Determine disclosure level from score
+        local level="compact"
+        if awk -v s="$score" -v h="$RAG_DISCLOSURE_HIGH" 'BEGIN { exit (s >= h) ? 0 : 1 }'; then
+            level="full"
+        elif awk -v s="$score" -v m="$RAG_DISCLOSURE_MED" 'BEGIN { exit (s >= m) ? 0 : 1 }'; then
+            level="detail"
+        fi
+
+        local pct
+        pct=$(awk -v s="$score" 'BEGIN { printf "%.0f", s * 100 }')
+
+        # Try structured insights
         local insights
         insights=$(db_get_insight_summaries "$id" 5 2>/dev/null | tr -d '\r')
 
-        if [[ -n "$insights" ]]; then
-            # Use structured insights (much more compact)
+        if [[ "$level" == "compact" ]]; then
+            # Layer 1: One-line summaries only
+            local compact_text=""
+            if [[ -n "$insights" ]]; then
+                local first_insight
+                first_insight=$(echo "$insights" | head -1)
+                IFS='|' read -r _rid itype isev _ifile iwhat <<< "$first_insight"
+                compact_text="[$itype|$isev] ${iwhat:-review}"
+            else
+                local snap_status
+                snap_status=$(sqlite3 "$db_path" \
+                    "SELECT status FROM reviews WHERE id = $id;" 2>/dev/null | tr -d '\r')
+                compact_text="[${snap_status:-UNKNOWN}] ${snippet:-review}"
+            fi
+
+            local entry_tokens=$(( ${#compact_text} / 4 + 15 ))
+            if [[ $((token_count + entry_tokens)) -gt $RAG_MAX_TOKENS ]]; then
+                break
+            fi
+
+            ((review_num++))
+            token_count=$((token_count + entry_tokens))
+
+            context+="
+- **#$review_num** (${pct}%): $compact_text"
+
+        elif [[ "$level" == "detail" ]]; then
+            # Layer 2: Insight summaries with file context
             local insight_text=""
-            while IFS='|' read -r _rid itype isev ifile iwhat; do
-                [[ -z "$iwhat" ]] && continue
-                insight_text+="  - [$itype|$isev] ${ifile:+$ifile: }$iwhat
+            if [[ -n "$insights" ]]; then
+                while IFS='|' read -r _rid itype isev ifile iwhat; do
+                    [[ -z "$iwhat" ]] && continue
+                    insight_text+="  - [$itype|$isev] ${ifile:+$ifile: }$iwhat
 "
-            done <<< "$insights"
+                done <<< "$insights"
+            else
+                local snap_status snap_files
+                snap_status=$(sqlite3 "$db_path" \
+                    "SELECT status FROM reviews WHERE id = $id;" 2>/dev/null | tr -d '\r')
+                snap_files=$(sqlite3 "$db_path" \
+                    "SELECT files FROM reviews WHERE id = $id;" 2>/dev/null | tr -d '\r')
+                insight_text="  - [${snap_status:-UNKNOWN}] ${snap_files:+$snap_files: }${snippet:-review}
+"
+            fi
 
             local entry_tokens=$(( ${#insight_text} / 4 + 30 ))
             if [[ $((token_count + entry_tokens)) -gt $RAG_MAX_TOKENS ]]; then
@@ -185,26 +241,37 @@ rag_build_context() {
             ((review_num++))
             token_count=$((token_count + entry_tokens))
 
-            local pct
-            pct=$(awk -v s="$score" 'BEGIN { printf "%.0f", s * 100 }')
-
             context+="
 ### Review #$review_num (Relevance: ${pct}%)
 $insight_text---"
+
         else
-            # Fallback to raw result (legacy reviews without insights)
+            # Layer 3 (full): Complete insights + raw findings
+            local full_text=""
+            if [[ -n "$insights" ]]; then
+                while IFS='|' read -r _rid itype isev ifile iwhat; do
+                    [[ -z "$iwhat" ]] && continue
+                    full_text+="  - [$itype|$isev] ${ifile:+$ifile: }$iwhat
+"
+                done <<< "$insights"
+            fi
+
+            # Also include raw findings for full disclosure
             local details status result files
             details=$(sqlite3 -separator '|' "$db_path" \
                 "SELECT status, result, files FROM reviews WHERE id = $id;" 2>/dev/null | tr -d '\r')
 
             IFS='|' read -r status result files <<< "$details"
 
-            # Truncate long results
             if [[ ${#result} -gt 400 ]]; then
                 result="${result:0:400}..."
             fi
 
-            local entry_tokens=$(( ${#result} / 4 + 50 ))
+            full_text+="- **Status:** $status
+- **Files:** $files
+- **Findings:** $result"
+
+            local entry_tokens=$(( ${#full_text} / 4 + 50 ))
             if [[ $((token_count + entry_tokens)) -gt $RAG_MAX_TOKENS ]]; then
                 break
             fi
@@ -212,14 +279,9 @@ $insight_text---"
             ((review_num++))
             token_count=$((token_count + entry_tokens))
 
-            local pct
-            pct=$(awk -v s="$score" 'BEGIN { printf "%.0f", s * 100 }')
-
             context+="
-### Review #$review_num (Relevance: ${pct}%)
-- **Status:** $status
-- **Files:** $files
-- **Findings:** $result
+### Review #$review_num (Relevance: ${pct}%) [DETAILED]
+$full_text
 ---"
         fi
     done <<< "$retrieved"
