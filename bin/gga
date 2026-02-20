@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.7.0"
+VERSION="2.10.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -20,6 +20,10 @@ source "$LIB_DIR/providers.sh"
 source "$LIB_DIR/cache.sh"
 # shellcheck source=lib/pr_mode.sh
 source "$LIB_DIR/pr_mode.sh"
+# shellcheck source=lib/config.sh
+source "$LIB_DIR/config.sh"
+# shellcheck source=lib/sqlite.sh
+source "$LIB_DIR/sqlite.sh"
 
 # ============================================================================
 # Signal Handling - Graceful cleanup on interruption
@@ -74,12 +78,17 @@ print_help() {
   echo ""
   echo -e "${BOLD}COMMANDS:${NC}"
   echo "  run [--no-cache]  Run code review on staged files"
+  echo "  ask <question>    Ask questions about your review history (RAG)"
   echo "  install           Install git pre-commit hook (default)"
   echo "  install --commit-msg"
   echo "                    Install git commit-msg hook (for commit message validation)"
   echo "  uninstall         Remove git hooks from current repo"
   echo "  config            Show current configuration"
   echo "  init              Create a sample .gga config file"
+  echo "  history           Show review history"
+  echo "  search <query>    Search past reviews (FTS5)"
+  echo "  predict <file>    Predict issues using Hebbian memory"
+  echo "  memory            Manage Hebbian memory network"
   echo "  cache clear       Clear cache for current project"
   echo "  cache clear-all   Clear all cached data"
   echo "  cache status      Show cache status"
@@ -88,6 +97,7 @@ print_help() {
   echo ""
   echo -e "${BOLD}RUN OPTIONS:${NC}"
   echo "  --no-cache        Force review all files, ignoring cache"
+  echo "  --no-rag          Disable RAG (context from review history)"
   echo "  --ci              CI mode: review files changed in last commit (HEAD~1..HEAD)"
   echo "                    Use this in GitLab CI, GitHub Actions, etc."
   echo "  --pr-mode         PR mode: review all files changed in the full PR"
@@ -114,11 +124,19 @@ print_help() {
   echo "  gga init               # Create sample config"
   echo "  gga install            # Install pre-commit hook (default)"
   echo "  gga install --commit-msg  # Install commit-msg hook"
-  echo "  gga run                # Run review (with cache)"
+  echo "  gga run                # Run review (with cache + RAG)"
   echo "  gga run --no-cache     # Run review (ignore cache)"
+  echo "  gga run --no-rag       # Run review (without historical context)"
   echo "  gga run --ci           # Run review in CI (last commit)"
   echo "  gga run --pr-mode      # Review full PR changes"
   echo "  gga run --pr-mode --diff-only  # Review PR diffs only"
+  echo "  gga ask \"common issues?\"  # Ask about your review history"
+  echo "  gga history            # Show recent reviews"
+  echo "  gga history --limit 10 # Show last 10 reviews"
+  echo "  gga search \"sql\"       # Search for reviews mentioning SQL"
+  echo "  gga predict src/auth.ts  # Predict issues for a file"
+  echo "  gga memory show        # Show all associations"
+  echo "  gga memory stats       # Show memory statistics"
   echo "  gga cache status       # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
@@ -588,18 +606,441 @@ cmd_cache() {
   esac
 }
 
+cmd_history() {
+  print_banner
+  load_env_config
+
+  # Parse arguments
+  local limit="$GGA_HISTORY_LIMIT"
+  local status_filter=""
+  local project_filter=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --limit)
+        limit="$2"
+        shift 2
+        ;;
+      --limit=*)
+        limit="${1#*=}"
+        shift
+        ;;
+      --status)
+        status_filter="$2"
+        shift 2
+        ;;
+      --status=*)
+        status_filter="${1#*=}"
+        shift
+        ;;
+      --project)
+        project_filter="$2"
+        shift 2
+        ;;
+      --project=*)
+        project_filter="${1#*=}"
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Check if sqlite3 is available
+  if ! command -v sqlite3 &> /dev/null; then
+    log_error "sqlite3 not found. History requires sqlite3."
+    exit 1
+  fi
+
+  # Check if database exists
+  if [[ ! -f "$GGA_DB_PATH" ]]; then
+    log_warning "No review history found."
+    echo ""
+    echo "Reviews are saved automatically when you run 'gga run'."
+    echo "Database location: $GGA_DB_PATH"
+    echo ""
+    exit 0
+  fi
+
+  echo -e "${BOLD}Review History:${NC}"
+  echo ""
+
+  # Get reviews
+  local reviews
+  reviews=$(db_get_reviews "$limit" "$status_filter" "$project_filter")
+
+  if [[ -z "$reviews" || "$reviews" == "[]" ]]; then
+    log_info "No reviews found matching criteria."
+    exit 0
+  fi
+
+  # Format output (requires jq)
+  if command -v jq &> /dev/null; then
+    echo "$reviews" | jq -r '.[] | "  \(.id) | \(.created_at) | \(.status) | \(.project_name) | \(.files_count) file(s)"'
+  else
+    echo "$reviews"
+  fi
+  echo ""
+
+  # Show stats
+  local stats
+  stats=$(db_stats)
+  echo -e "${BOLD}Statistics:${NC}"
+  echo "  $stats" | tr '|' ' '
+  echo ""
+}
+
+cmd_search() {
+  print_banner
+  load_env_config
+
+  local query=""
+  local limit="${GGA_SEARCH_LIMIT:-20}"
+  local mode="hybrid"  # lexical, semantic, hybrid
+  local alpha="${GGA_SEARCH_ALPHA:-0.5}"
+  local similar_to=""
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --limit)
+        limit="$2"
+        shift 2
+        ;;
+      --limit=*)
+        limit="${1#*=}"
+        shift
+        ;;
+      --mode)
+        mode="$2"
+        shift 2
+        ;;
+      --mode=*)
+        mode="${1#*=}"
+        shift
+        ;;
+      --alpha)
+        alpha="$2"
+        shift 2
+        ;;
+      --alpha=*)
+        alpha="${1#*=}"
+        shift
+        ;;
+      --similar-to)
+        similar_to="$2"
+        shift 2
+        ;;
+      --similar-to=*)
+        similar_to="${1#*=}"
+        shift
+        ;;
+      -*)
+        log_error "Unknown option: $1"
+        exit 1
+        ;;
+      *)
+        query="$1"
+        shift
+        ;;
+    esac
+  done
+
+  # Handle --similar-to mode (find reviews similar to a given ID)
+  if [[ -n "$similar_to" ]]; then
+    # Check if sqlite3 is available
+    if ! command -v sqlite3 &> /dev/null; then
+      log_error "sqlite3 not found. Search requires sqlite3."
+      exit 1
+    fi
+
+    # Check if database exists
+    if [[ ! -f "$GGA_DB_PATH" ]]; then
+      log_warning "No review history found."
+      exit 0
+    fi
+
+    # Source semantic search
+    # shellcheck source=../lib/semantic.sh
+    source "$LIB_DIR/semantic.sh" 2>/dev/null || {
+      log_error "Semantic search not available"
+      exit 1
+    }
+
+    echo -e "${BOLD}Reviews similar to #${similar_to}:${NC}"
+    echo ""
+
+    local results
+    results=$(find_similar "$similar_to" "$limit")
+
+    if [[ -z "$results" ]]; then
+      log_info "No similar reviews found"
+      exit 0
+    fi
+
+    echo "$results" | while IFS='|' read -r score id status project; do
+      printf "  %.2f | %s | %s | %s\n" "$score" "$id" "$status" "$project"
+    done
+    echo ""
+    exit 0
+  fi
+
+  if [[ -z "$query" ]]; then
+    log_error "Search query required"
+    echo ""
+    echo "Usage: gga search <query> [options]"
+    echo ""
+    echo "Options:"
+    echo "  --mode=MODE      Search mode: lexical, semantic, hybrid (default: hybrid)"
+    echo "  --alpha=N        Hybrid balance: 0=semantic, 1=lexical (default: 0.5)"
+    echo "  --limit=N        Maximum results (default: 20)"
+    echo "  --similar-to=ID  Find reviews similar to review ID"
+    echo ""
+    echo "Examples:"
+    echo "  gga search \"authentication\"                 # hybrid search"
+    echo "  gga search --mode=lexical \"sql injection\"   # FTS5 only"
+    echo "  gga search --mode=semantic \"debugging\"      # embedding similarity"
+    echo "  gga search --similar-to 42                   # reviews like #42"
+    echo ""
+    exit 1
+  fi
+
+  # Check if sqlite3 is available
+  if ! command -v sqlite3 &> /dev/null; then
+    log_error "sqlite3 not found. Search requires sqlite3."
+    exit 1
+  fi
+
+  # Check if database exists
+  if [[ ! -f "$GGA_DB_PATH" ]]; then
+    log_warning "No review history found."
+    echo ""
+    echo "Reviews are saved automatically when you run 'gga run'."
+    echo ""
+    exit 0
+  fi
+
+  echo -e "${BOLD}Search Results for:${NC} $query"
+  echo -e "${DIM}Mode: $mode | Alpha: $alpha | Limit: $limit${NC}"
+  echo ""
+
+  local results
+
+  case "$mode" in
+    lexical)
+      # Use FTS5 only
+      results=$(db_search_reviews "$query" "$limit")
+      if [[ -z "$results" || "$results" == "[]" ]]; then
+        log_info "No reviews found matching: $query"
+        exit 0
+      fi
+      # Format output (requires jq)
+      if command -v jq &> /dev/null; then
+        echo "$results" | jq -r '.[] | "  \(.id) | \(.status) | \(.project_name) | \(.match_snippet)"'
+      else
+        echo "$results"
+      fi
+      ;;
+
+    semantic)
+      # Source semantic search
+      # shellcheck source=../lib/semantic.sh
+      source "$LIB_DIR/semantic.sh" 2>/dev/null || {
+        log_error "Semantic search not available"
+        exit 1
+      }
+      results=$(search_semantic "$query" "$limit")
+      if [[ -z "$results" ]]; then
+        log_info "No reviews found matching: $query"
+        log_info "Note: Semantic search requires reviews with embeddings."
+        exit 0
+      fi
+      echo "$results" | while IFS='|' read -r score id status project; do
+        printf "  %.4f | %s | %s | %s\n" "$score" "$id" "$status" "$project"
+      done
+      ;;
+
+    hybrid|*)
+      # Source semantic search
+      # shellcheck source=../lib/semantic.sh
+      source "$LIB_DIR/semantic.sh" 2>/dev/null || {
+        # Fallback to lexical if semantic not available
+        log_warning "Semantic search not available, using lexical only"
+        results=$(db_search_reviews "$query" "$limit")
+        if [[ -z "$results" || "$results" == "[]" ]]; then
+          log_info "No reviews found matching: $query"
+          exit 0
+        fi
+        if command -v jq &> /dev/null; then
+          echo "$results" | jq -r '.[] | "  \(.id) | \(.status) | \(.project_name) | \(.match_snippet)"'
+        else
+          echo "$results"
+        fi
+        exit 0
+      }
+      results=$(search_hybrid "$query" "$alpha" "$limit")
+      if [[ -z "$results" ]]; then
+        log_info "No reviews found matching: $query"
+        exit 0
+      fi
+      echo "$results" | while IFS='|' read -r score id status project snippet; do
+        printf "  %.4f | %s | %s | %s | %s\n" "$score" "$id" "$status" "$project" "${snippet:0:50}"
+      done
+      ;;
+  esac
+
+  echo ""
+}
+
+# ============================================================================
+# Ask Command - Query review history using RAG
+# ============================================================================
+
+cmd_ask() {
+  local question="$*"
+
+  if [[ -z "$question" ]]; then
+    log_error "Please provide a question"
+    echo ""
+    echo "Usage: gga ask \"your question\""
+    echo ""
+    echo "Examples:"
+    echo "  gga ask \"what are the most common issues?\""
+    echo "  gga ask \"how do we handle authentication?\""
+    echo "  gga ask \"sql injection patterns?\""
+    echo ""
+    exit 1
+  fi
+
+  print_banner
+  load_env_config
+
+  # Source RAG module
+  # shellcheck source=lib/rag.sh
+  if ! source "$LIB_DIR/rag.sh" 2>/dev/null; then
+    log_error "RAG module not available"
+    exit 1
+  fi
+
+  log_info "Searching review history for: \"$question\""
+  echo ""
+
+  # Use rag_ask to get context
+  rag_ask "$question"
+}
+
+# ============================================================================
+# Memory Command - Manage Hebbian memory network
+# ============================================================================
+
+cmd_memory() {
+  local subcmd="${1:-help}"
+  shift 2>/dev/null || true
+
+  print_banner
+  load_env_config
+
+  # Source Hebbian module
+  # shellcheck source=lib/hebbiana.sh
+  if ! source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
+    log_error "Hebbian module not available"
+    exit 1
+  fi
+
+  case "$subcmd" in
+    show)
+      local concept="${1:-}"
+      hebbian_show "$concept"
+      ;;
+    stats)
+      hebbian_stats
+      ;;
+    init)
+      log_info "Initializing Hebbian memory tables..."
+      if hebbian_init_schema; then
+        log_success "Hebbian memory initialized"
+      else
+        log_error "Failed to initialize Hebbian memory"
+        exit 1
+      fi
+      ;;
+    check)
+      hebbian_check
+      ;;
+    consolidate)
+      local days="${1:-30}"
+      log_info "Consolidating memory (decay $days days)..."
+      hebbian_decay "$days"
+      ;;
+    help|*)
+      echo -e "${BOLD}Usage:${NC} gga memory <subcommand>"
+      echo ""
+      echo -e "${BOLD}Subcommands:${NC}"
+      echo "  show [concept]    Show associations (all or for a specific concept)"
+      echo "  stats             Show memory statistics"
+      echo "  init              Initialize Hebbian memory tables"
+      echo "  check             Check if memory is available"
+      echo "  consolidate [days] Apply decay and remove weak associations"
+      echo ""
+      echo -e "${BOLD}Examples:${NC}"
+      echo "  gga memory show                    # Show all associations"
+      echo "  gga memory show pattern:security   # Show associations for security"
+      echo "  gga memory stats                   # Show statistics"
+      echo "  gga memory consolidate 30          # Decay 30 days worth"
+      echo ""
+      ;;
+  esac
+}
+
+# ============================================================================
+# Predict Command - Predict issues using Hebbian memory
+# ============================================================================
+
+cmd_predict() {
+  local input="$*"
+
+  if [[ -z "$input" ]]; then
+    log_error "Please provide a file or text to analyze"
+    echo ""
+    echo "Usage: gga predict <file_or_text>"
+    echo ""
+    echo "Examples:"
+    echo "  gga predict src/auth.ts            # Predict issues for a file"
+    echo "  gga predict \"login jwt token auth\" # Predict for text"
+    echo ""
+    exit 1
+  fi
+
+  print_banner
+  load_env_config
+
+  # Source Hebbian module
+  # shellcheck source=lib/hebbiana.sh
+  if ! source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
+    log_error "Hebbian module not available"
+    exit 1
+  fi
+
+  hebbian_predict "$input"
+}
+
 cmd_run() {
   local use_cache=true
   local ci_mode=false
   local pr_mode=false
   local diff_only=false
+  local use_rag=true
   local commit_msg_file=""
-  
+
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
       --no-cache)
         use_cache=false
+        ;;
+      --no-rag)
+        use_rag=false
         ;;
       --ci)
         ci_mode=true
@@ -814,9 +1255,38 @@ cmd_run() {
     PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
   fi
 
+  # Augment prompt with RAG (historical context) if enabled
+  if [[ "$use_rag" == "true" ]]; then
+    # Source RAG module
+    # shellcheck source=lib/rag.sh
+    if source "$LIB_DIR/rag.sh" 2>/dev/null; then
+      # Get diff for pattern extraction
+      local diff_content
+      if [[ "$ci_mode" == "true" ]]; then
+        diff_content=$(git diff HEAD~1..HEAD 2>/dev/null || echo "")
+      else
+        diff_content=$(git diff --cached 2>/dev/null || echo "")
+      fi
+
+      # Augment prompt with historical context
+      local augmented_prompt
+      augmented_prompt=$(rag_augment_prompt "$PROMPT" "$files_to_review" "$diff_content" "$commit_msg")
+      if [[ -n "$augmented_prompt" ]]; then
+        PROMPT="$augmented_prompt"
+        log_info "RAG: ${GREEN}enabled${NC} (historical context added)"
+      fi
+    fi
+  else
+    log_info "RAG: ${YELLOW}disabled${NC} (--no-rag)"
+  fi
+
   # Execute review with timeout and progress feedback
   log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
   echo ""
+
+  # Capture start time for duration tracking
+  local start_time
+  start_time=$(date +%s%3N 2>/dev/null || date +%s)000
 
   # Temporarily disable set -e to capture exit status properly
   # (bash 3.2 on macOS can exit on non-zero in command substitution)
@@ -856,22 +1326,70 @@ cmd_run() {
   echo "$RESULT"
   echo ""
 
+  # Calculate duration
+  local end_time duration_ms
+  end_time=$(date +%s%3N 2>/dev/null || date +%s)000
+  duration_ms=$((end_time - start_time))
+
+  # Helper function to save review to SQLite
+  save_review_to_db() {
+    local review_status="$1"
+
+    # Only save if sqlite3 is available
+    command -v sqlite3 &> /dev/null || return 0
+
+    # Initialize database if needed
+    load_env_config
+    db_init > /dev/null 2>&1 || return 0
+
+    # Get project info
+    local project_path project_name git_branch git_commit
+    project_path=$(pwd)
+    project_name=$(basename "$project_path")
+    git_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    git_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+
+    # Build files list and count
+    local files_list files_count
+    files_list=$(echo "$files_to_review" | tr '\n' ',' | sed 's/,$//')
+    files_count=$(echo "$files_to_review" | grep -c . || echo "0")
+
+    # Generate diff hash for deduplication
+    local diff_content diff_hash
+    diff_content=$(git diff --cached 2>/dev/null || echo "")
+    diff_hash=$(echo "$diff_content" | _compute_hash_stdin 2>/dev/null || echo "")
+
+    # Save to database
+    db_save_review "$project_path" "$project_name" "$git_branch" "$git_commit" \
+      "$files_list" "$files_count" "$diff_content" "$diff_hash" \
+      "$RESULT" "$review_status" "$PROVIDER" "" "$duration_ms" 2>/dev/null || true
+
+    # Learn from review using Hebbian memory (if available)
+    if source "$LIB_DIR/hebbiana.sh" 2>/dev/null; then
+      hebbian_learn_from_review "$files_list" "$diff_content" "$RESULT" "$review_status" 2>/dev/null || true
+    fi
+  }
+
   # Parse result
   # Search for STATUS in the first 15 lines to handle AI responses that include
   # preamble text (e.g., instruction acknowledgments, markdown formatting)
   # Accepts: "STATUS: PASSED", "**STATUS: PASSED**", etc.
   local status_check
   status_check=$(echo "$RESULT" | head -n 15)
-  
+
   if echo "$status_check" | grep -q "STATUS: PASSED"; then
     # Cache the passed files
     if [[ "$cache_initialized" == true ]]; then
       cache_files_passed "$files_to_review"
     fi
+    # Save to history
+    save_review_to_db "PASSED"
     log_success "CODE REVIEW PASSED"
     echo ""
     exit 0
   elif echo "$status_check" | grep -q "STATUS: FAILED"; then
+    # Save to history
+    save_review_to_db "FAILED"
     log_error "CODE REVIEW FAILED"
     echo ""
     echo "Fix the violations listed above before committing."
@@ -879,6 +1397,8 @@ cmd_run() {
     exit 1
   else
     log_warning "Could not determine review status"
+    # Save to history with UNKNOWN status
+    save_review_to_db "UNKNOWN"
     if [[ "$STRICT_MODE" == "true" ]]; then
       log_error "STRICT MODE: Failing due to ambiguous response"
       echo ""
@@ -1121,6 +1641,10 @@ main() {
       shift
       cmd_run "$@"
       ;;
+    ask)
+      shift
+      cmd_ask "$@"
+      ;;
     install)
       shift
       cmd_install "$@"
@@ -1137,6 +1661,22 @@ main() {
     cache)
       shift
       cmd_cache "$@"
+      ;;
+    history)
+      shift
+      cmd_history "$@"
+      ;;
+    search)
+      shift
+      cmd_search "$@"
+      ;;
+    memory)
+      shift
+      cmd_memory "$@"
+      ;;
+    predict)
+      shift
+      cmd_predict "$@"
       ;;
     version|--version|-v)
       print_version
