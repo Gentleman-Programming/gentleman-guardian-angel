@@ -28,6 +28,14 @@ load_env_config() {
     GGA_RAG_CONTEXT_LIMIT="${GGA_RAG_CONTEXT_LIMIT:-5}"
     GGA_RAG_MIN_SIMILARITY="${GGA_RAG_MIN_SIMILARITY:-0.5}"
 
+    # Validate GGA_DB_PATH to prevent command injection
+    # Reject paths with shell metacharacters: backticks, $(), ;, |, &, newlines
+    if [[ "$GGA_DB_PATH" =~ [\`\$\;\|\&\'] || "$GGA_DB_PATH" =~ $'\n' ]]; then
+        echo "Error: GGA_DB_PATH contains invalid characters: $GGA_DB_PATH" >&2
+        echo "       Path must not contain shell metacharacters." >&2
+        return 1
+    fi
+
     # Ensure database directory exists
     local db_dir
     db_dir=$(dirname "$GGA_DB_PATH")
