@@ -362,6 +362,7 @@ Describe 'sqlite.sh'
       # Attempt SQL injection via status filter
       When call db_get_reviews 10 "PASSED' OR '1'='1"
       The status should be success
+      The output should eq "[]"
     End
 
     It 'safely handles SQL injection in project filter'
@@ -371,6 +372,7 @@ Describe 'sqlite.sh'
       # Attempt SQL injection via project filter
       When call db_get_reviews 10 "" "project'; DROP TABLE reviews;--"
       The status should be success
+      The output should eq "[]"
       # Table should still exist
       count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
       The value "$count" should eq "1"
@@ -403,6 +405,7 @@ Describe 'sqlite.sh'
       # Non-numeric ID should return empty (id=0 matches nothing)
       When call db_get_review "1; DROP TABLE reviews"
       The status should be success
+      The output should eq "[]"
       # Table should still exist
       count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
       The value "$count" should eq "1"
@@ -486,6 +489,296 @@ Describe 'sqlite.sh'
       When call insert_invalid_status
       The status should be failure
       The output should include "CHECK constraint failed"
+    End
+  End
+
+  # ==========================================================================
+  # _json_array_fix helper
+  # ==========================================================================
+
+  Describe '_json_array_fix()'
+    It 'returns [] for [null] input'
+      When call _json_array_fix '[null]'
+      The output should eq "[]"
+    End
+
+    It 'returns [] for empty input'
+      When call _json_array_fix ''
+      The output should eq "[]"
+    End
+
+    It 'passes through valid JSON array'
+      When call _json_array_fix '[{"id":1}]'
+      The output should eq '[{"id":1}]'
+    End
+  End
+
+  # ==========================================================================
+  # db_get_review() functional tests (H6)
+  # ==========================================================================
+
+  Describe 'db_get_review()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      db_save_review "/path/to/project" "my-project" "main" "abc123" \
+        "file1.ts,file2.ts" 2 "diff content here" "unique_hash_1" \
+        "Review passed with no issues" "PASSED" "claude" "claude-3" 1500
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'returns a single review by ID'
+      When call db_get_review 1
+      The output should include "my-project"
+      The output should include "PASSED"
+      The output should include "claude"
+    End
+
+    It 'returns full review details including diff_content'
+      When call db_get_review 1
+      The output should include "diff content here"
+      The output should include "unique_hash_1"
+      The output should include "abc123"
+    End
+
+    It 'returns [] for non-existent review ID'
+      When call db_get_review 999
+      The output should eq "[]"
+    End
+  End
+
+  # ==========================================================================
+  # db_get_reviews() combined filter (M4)
+  # ==========================================================================
+
+  Describe 'db_get_reviews() combined filters'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      db_save_review "/p1" "alpha" "main" "a1" "f.ts" 1 "d" "h1" "r" "PASSED" "claude" "" 100
+      db_save_review "/p2" "alpha" "main" "a2" "f.ts" 1 "d" "h2" "r" "FAILED" "claude" "" 200
+      db_save_review "/p3" "beta" "main" "a3" "f.ts" 1 "d" "h3" "r" "PASSED" "gemini" "" 300
+      db_save_review "/p4" "beta" "main" "a4" "f.ts" 1 "d" "h4" "r" "FAILED" "gemini" "" 400
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'filters by both status and project'
+      When call db_get_reviews 10 "PASSED" "alpha"
+      The output should include "alpha"
+      The output should not include "beta"
+      The output should not include "FAILED"
+    End
+
+    It 'returns [] when combined filter matches nothing'
+      When call db_get_reviews 10 "ERROR" "alpha"
+      The output should eq "[]"
+    End
+  End
+
+  # ==========================================================================
+  # db_search_by_status() (H5)
+  # ==========================================================================
+
+  Describe 'db_search_by_status()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      db_save_review "/p1" "proj1" "main" "a1" "f.ts" 1 "d" "h1" "Result one" "PASSED" "claude" "" 100
+      db_save_review "/p2" "proj2" "main" "a2" "f.ts" 1 "d" "h2" "Result two" "FAILED" "gemini" "" 200
+      db_save_review "/p3" "proj3" "main" "a3" "f.ts" 1 "d" "h3" "Result three" "PASSED" "claude" "" 300
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'returns reviews matching status'
+      When call db_search_by_status "PASSED"
+      The output should include "proj1"
+      The output should include "proj3"
+      The output should not include "proj2"
+    End
+
+    It 'returns [] for status with no matches'
+      When call db_search_by_status "ERROR"
+      The output should eq "[]"
+    End
+
+    It 'respects limit parameter'
+      When call db_search_by_status "PASSED" 1
+      The status should be success
+      The output should be defined
+    End
+  End
+
+  # ==========================================================================
+  # db_stats_by_project() (H5)
+  # ==========================================================================
+
+  Describe 'db_stats_by_project()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      db_save_review "/p1" "alpha" "main" "a1" "f.ts" 1 "d" "h1" "r" "PASSED" "claude" "" 100
+      db_save_review "/p2" "alpha" "main" "a2" "f.ts" 1 "d" "h2" "r" "FAILED" "claude" "" 200
+      db_save_review "/p3" "beta" "main" "a3" "f.ts" 1 "d" "h3" "r" "PASSED" "gemini" "" 300
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'returns stats grouped by project'
+      When call db_stats_by_project
+      The output should include "alpha"
+      The output should include "beta"
+    End
+
+    It 'includes review counts per project'
+      When call db_stats_by_project
+      The output should include "review_count"
+      The output should include "passed"
+      The output should include "failed"
+    End
+
+    It 'returns [] for empty database'
+      sqlite3 "$GGA_DB_PATH" "DELETE FROM reviews;"
+      When call db_stats_by_project
+      The output should eq "[]"
+    End
+  End
+
+  # ==========================================================================
+  # db_cleanup() (H5)
+  # ==========================================================================
+
+  Describe 'db_cleanup()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      # Insert 5 reviews for same project
+      local i
+      for i in 1 2 3 4 5; do
+        db_save_review "/p" "proj1" "main" "a$i" "f.ts" 1 "d" "cleanup_h$i" "result $i" "PASSED" "claude" "" 100
+      done
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'keeps the specified number of reviews per project'
+      When call db_cleanup 3
+      The status should be success
+      count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      The value "$count" should eq "3"
+    End
+
+    It 'keeps all reviews when count is higher than total'
+      When call db_cleanup 100
+      The status should be success
+      count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      The value "$count" should eq "5"
+    End
+
+    It 'runs VACUUM after cleanup'
+      # Just verify it does not error out
+      When call db_cleanup 2
+      The status should be success
+    End
+  End
+
+  # ==========================================================================
+  # FTS5 index after upsert (C3)
+  # ==========================================================================
+
+  Describe 'FTS5 index after upsert'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'updates FTS5 index when review is upserted'
+      # Insert original review with searchable content
+      db_save_review "/path" "project" "main" "abc" \
+        "auth.ts" 1 "diff" "fts_upsert_hash" \
+        "Original review about authentication" "PASSED" "claude" "" 1000
+      # Upsert with different content
+      db_save_review "/path" "project" "main" "def" \
+        "auth.ts" 1 "diff" "fts_upsert_hash" \
+        "Updated review about authorization" "FAILED" "gemini" "" 2000
+      # Search for old content should NOT find it
+      old_result=$(db_search_reviews "authentication")
+      The value "$old_result" should eq "[]"
+      # Search for new content SHOULD find it
+      new_result=$(db_search_reviews "authorization")
+      The value "$new_result" should include "project"
+    End
+
+    It 'keeps FTS5 index in sync after multiple inserts'
+      db_save_review "/p1" "proj1" "main" "a1" \
+        "api.ts" 1 "code" "fts_hash1" \
+        "Security vulnerability detected" "FAILED" "claude" "" 100
+      db_save_review "/p2" "proj2" "main" "a2" \
+        "db.ts" 1 "code" "fts_hash2" \
+        "Database migration successful" "PASSED" "gemini" "" 200
+      # Search should find each by unique content
+      sec_result=$(db_search_reviews "vulnerability")
+      The value "$sec_result" should include "proj1"
+      db_result=$(db_search_reviews "migration")
+      The value "$db_result" should include "proj2"
     End
   End
 End
