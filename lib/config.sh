@@ -4,7 +4,8 @@
 # Gentleman Guardian Angel - Configuration Functions
 # ============================================================================
 # Configuration management via environment variables with sensible defaults.
-# Priority: Environment variables (GGA_*) > Defaults
+# Priority: Environment variables (GGA_*) > Built-in defaults
+# Note: There is no config file layer; all overrides are via env vars.
 # ============================================================================
 
 # Default values

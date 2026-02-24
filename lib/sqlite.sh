@@ -19,7 +19,7 @@ db_init() {
     mkdir -p "$(dirname "$db_path")"
 
     # Create tables and indexes
-    sqlite3 "$db_path" <<'SQL'
+    if ! sqlite3 "$db_path" <<'SQL'
 -- Main reviews table
 CREATE TABLE IF NOT EXISTS reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +71,10 @@ CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
 CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reviews_diff_hash ON reviews(diff_hash);
 SQL
+    then
+        echo "Error: failed to initialize database at $db_path" >&2
+        return 1
+    fi
 
     echo "$db_path"
 }
@@ -102,17 +106,25 @@ _sql_validate_int() {
 # Sanitize a string for FTS5 MATCH queries.
 # Wraps each whitespace-separated token in double quotes to prevent
 # FTS5 operator injection (AND, OR, NOT, NEAR, etc.).
+# Also strips single quotes to prevent SQL literal breakout.
 # Usage: local safe_q; safe_q=$(_fts5_sanitize "$raw_query")
 _fts5_sanitize() {
     local query="$1"
     local sanitized=""
 
     # Remove characters that are special in FTS5: " ( ) * ^
+    # Also remove single quotes to prevent SQL injection when
+    # the result is embedded in a SQL string literal
     query="${query//\"/}"
     query="${query//\(/}"
     query="${query//\)/}"
     query="${query//\*/}"
     query="${query//^/}"
+    query="${query//\'/}"
+
+    # Disable pathname expansion to prevent glob chars (?, [, ])
+    # from expanding to filenames during word splitting
+    local old_opts; old_opts=$(set +o); set -f
 
     # Wrap each token in double quotes
     local token
@@ -124,6 +136,9 @@ _fts5_sanitize() {
             sanitized="\"$token\""
         fi
     done
+
+    # Restore original shell options
+    eval "$old_opts"
 
     printf '%s' "$sanitized"
 }
@@ -235,11 +250,11 @@ SELECT
     r.project_name,
     r.files_count,
     snippet(reviews_fts, 1, '>>>', '<<<', '...', 32) as match_snippet,
-    rank
+    bm25(reviews_fts) AS rank
 FROM reviews_fts
 JOIN reviews r ON reviews_fts.rowid = r.id
 WHERE reviews_fts MATCH '$query'
-ORDER BY rank
+ORDER BY bm25(reviews_fts)
 LIMIT $limit;
 SQL
 )

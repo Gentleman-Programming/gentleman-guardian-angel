@@ -5,11 +5,6 @@ no_sqlite3() {
   ! command -v sqlite3 &>/dev/null
 }
 
-# Skip on Windows where /root doesn't exist
-no_root_dir() {
-  [[ ! -d "/root" ]]
-}
-
 Describe 'config.sh'
   Include "$LIB_DIR/config.sh"
 

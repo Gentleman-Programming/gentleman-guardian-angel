@@ -41,7 +41,7 @@ echo ""
 if [[ ! -w "$INSTALL_DIR" ]]; then
     echo -e "${RED}❌ No write permission to $INSTALL_DIR${NC}"
     echo -e "${YELLOW}Fix ownership or permissions, e.g.:${NC}"
-    echo "  sudo chown -R $USER:$USER $INSTALL_DIR"
+    echo "  sudo chown -R \$(whoami):\$(whoami) $INSTALL_DIR"
     exit 1
 fi
 
@@ -78,7 +78,9 @@ fi
 
 # Make executable
 chmod +x "$INSTALL_DIR/gga"
-chmod +x "$LIB_INSTALL_DIR/"*.sh
+for f in "$LIB_INSTALL_DIR/"*.sh; do
+  [[ -f "$f" ]] && chmod +x "$f"
+done
 
 echo -e "${GREEN}✅ Installed gga to $INSTALL_DIR${NC}"
 echo ""
