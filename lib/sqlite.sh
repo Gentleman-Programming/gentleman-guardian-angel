@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     files TEXT NOT NULL,
     files_count INTEGER NOT NULL,
     diff_content TEXT,
-    diff_hash TEXT,
+    diff_hash TEXT NOT NULL,
     result TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('PASSED', 'FAILED', 'ERROR', 'UNKNOWN')),
     provider TEXT NOT NULL,
@@ -151,7 +151,7 @@ db_save_review() {
     local duration_ms; duration_ms=$(_sql_validate_int "${13:-0}" 0)
 
     sqlite3 "$db_path" <<SQL
-INSERT OR REPLACE INTO reviews (
+INSERT INTO reviews (
     project_path, project_name, git_branch, git_commit,
     files, files_count, diff_content, diff_hash,
     result, status, provider, model, duration_ms
@@ -159,7 +159,13 @@ INSERT OR REPLACE INTO reviews (
     '$project_path', '$project_name', '$git_branch', '$git_commit',
     '$files', $files_count, '$diff_content', '$diff_hash',
     '$result', '$status', '$provider', '$model', $duration_ms
-);
+)
+ON CONFLICT(diff_hash) DO UPDATE SET
+    result = excluded.result,
+    status = excluded.status,
+    provider = excluded.provider,
+    model = excluded.model,
+    duration_ms = excluded.duration_ms;
 SQL
 }
 
