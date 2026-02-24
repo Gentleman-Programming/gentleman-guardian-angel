@@ -609,6 +609,7 @@ cmd_history() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --limit)
+        [[ -z "${2:-}" ]] && { log_error "--limit requires a value"; exit 1; }
         limit="$2"
         shift 2
         ;;
@@ -617,6 +618,7 @@ cmd_history() {
         shift
         ;;
       --status)
+        [[ -z "${2:-}" ]] && { log_error "--status requires a value"; exit 1; }
         status_filter="$2"
         shift 2
         ;;
@@ -625,6 +627,7 @@ cmd_history() {
         shift
         ;;
       --project)
+        [[ -z "${2:-}" ]] && { log_error "--project requires a value"; exit 1; }
         project_filter="$2"
         shift 2
         ;;
@@ -694,6 +697,7 @@ cmd_search() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --limit)
+        [[ -z "${2:-}" ]] && { log_error "--limit requires a value"; exit 1; }
         limit="$2"
         shift 2
         ;;
