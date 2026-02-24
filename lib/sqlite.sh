@@ -211,13 +211,23 @@ db_get_reviews() {
         fi
     fi
 
-    sqlite3 -json "$db_path" <<SQL
-SELECT id, created_at, status, files_count, project_name, provider,
-       substr(result, 1, 200) as summary
-FROM reviews
-$where_clause
-ORDER BY created_at DESC
-LIMIT $limit;
+    sqlite3 "$db_path" <<SQL
+SELECT json_group_array(json_object(
+    'id', id,
+    'created_at', created_at,
+    'status', status,
+    'files_count', files_count,
+    'project_name', project_name,
+    'provider', provider,
+    'summary', substr(result, 1, 200)
+))
+FROM (
+    SELECT id, created_at, status, files_count, project_name, provider, result
+    FROM reviews
+    $where_clause
+    ORDER BY created_at DESC
+    LIMIT $limit
+);
 SQL
 }
 
@@ -226,8 +236,26 @@ db_get_review() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
     local review_id; review_id=$(_sql_validate_int "$1" 0)
 
-    sqlite3 -json "$db_path" <<SQL
-SELECT * FROM reviews WHERE id = $review_id;
+    sqlite3 "$db_path" <<SQL
+SELECT json_group_array(json_object(
+    'id', id,
+    'created_at', created_at,
+    'project_path', project_path,
+    'project_name', project_name,
+    'git_branch', git_branch,
+    'git_commit', git_commit,
+    'files', files,
+    'files_count', files_count,
+    'diff_content', diff_content,
+    'diff_hash', diff_hash,
+    'result', result,
+    'status', status,
+    'provider', provider,
+    'model', model,
+    'duration_ms', duration_ms,
+    'embedding', embedding
+))
+FROM reviews WHERE id = $review_id;
 SQL
 }
 
@@ -249,15 +277,20 @@ db_search_reviews() {
     fi
 
     local result
-    result=$(sqlite3 -json "$db_path" <<SQL
+    # FTS5 auxiliary functions (snippet, bm25) cannot be used inside
+    # aggregate functions like json_group_array(). Use separator-based
+    # output and build JSON manually for maximum compatibility.
+    local sep='§'
+    local rows
+    rows=$(sqlite3 -separator "$sep" "$db_path" <<SQL
 SELECT
     r.id,
     r.created_at,
     r.status,
     r.project_name,
     r.files_count,
-    snippet(reviews_fts, 1, '>>>', '<<<', '...', 32) as match_snippet,
-    bm25(reviews_fts) AS rank
+    snippet(reviews_fts, 1, '>>>', '<<<', '...', 32),
+    bm25(reviews_fts)
 FROM reviews_fts
 JOIN reviews r ON reviews_fts.rowid = r.id
 WHERE reviews_fts MATCH '$query'
@@ -265,8 +298,32 @@ ORDER BY bm25(reviews_fts)
 LIMIT $limit;
 SQL
 )
-    # Return empty array if no results
-    echo "${result:-[]}"
+
+    # Build JSON array from rows
+    if [[ -z "$rows" ]]; then
+        echo "[]"
+        return 0
+    fi
+
+    local json="["
+    local first=true
+    while IFS="$sep" read -r id created_at status project_name files_count match_snippet rank; do
+        [[ -z "$id" ]] && continue
+        # Escape double quotes in snippet for valid JSON
+        match_snippet="${match_snippet//\\/\\\\}"
+        match_snippet="${match_snippet//\"/\\\"}"
+        if [[ "$first" == true ]]; then
+            first=false
+        else
+            json+=","
+        fi
+        json+="{\"id\":$id,\"created_at\":\"$created_at\",\"status\":\"$status\","
+        json+="\"project_name\":\"$project_name\",\"files_count\":$files_count,"
+        json+="\"match_snippet\":\"$match_snippet\",\"rank\":$rank}"
+    done <<< "$rows"
+    json+="]"
+
+    echo "$json"
 }
 
 # Search by status
@@ -275,13 +332,21 @@ db_search_by_status() {
     local status; status=$(_sql_escape "$1")
     local limit; limit=$(_sql_validate_int "${2:-20}" 20)
 
-    sqlite3 -json "$db_path" <<SQL
-SELECT id, created_at, project_name, files_count,
-       substr(result, 1, 200) as summary
-FROM reviews
-WHERE status = '$status'
-ORDER BY created_at DESC
-LIMIT $limit;
+    sqlite3 "$db_path" <<SQL
+SELECT json_group_array(json_object(
+    'id', id,
+    'created_at', created_at,
+    'project_name', project_name,
+    'files_count', files_count,
+    'summary', substr(result, 1, 200)
+))
+FROM (
+    SELECT id, created_at, project_name, files_count, result
+    FROM reviews
+    WHERE status = '$status'
+    ORDER BY created_at DESC
+    LIMIT $limit
+);
 SQL
 }
 
@@ -309,16 +374,25 @@ SQL
 db_stats_by_project() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
 
-    sqlite3 -json "$db_path" <<'SQL'
-SELECT
-    project_name,
-    COUNT(*) as review_count,
-    SUM(CASE WHEN status = 'PASSED' THEN 1 ELSE 0 END) as passed,
-    SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
-    MAX(created_at) as last_review
-FROM reviews
-GROUP BY project_name
-ORDER BY review_count DESC;
+    sqlite3 "$db_path" <<'SQL'
+SELECT json_group_array(json_object(
+    'project_name', project_name,
+    'review_count', review_count,
+    'passed', passed,
+    'failed', failed,
+    'last_review', last_review
+))
+FROM (
+    SELECT
+        project_name,
+        COUNT(*) as review_count,
+        SUM(CASE WHEN status = 'PASSED' THEN 1 ELSE 0 END) as passed,
+        SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
+        MAX(created_at) as last_review
+    FROM reviews
+    GROUP BY project_name
+    ORDER BY review_count DESC
+);
 SQL
 }
 
