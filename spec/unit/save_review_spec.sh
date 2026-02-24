@@ -43,7 +43,14 @@ Describe 'save_review_to_db()'
     # Generate diff hash for deduplication
     local diff_content diff_hash
     diff_content=$(git diff --cached 2>/dev/null || echo "")
-    diff_hash=$(echo "$diff_content" | _compute_hash_stdin 2>/dev/null || echo "")
+    if [[ -n "$diff_content" ]]; then
+      diff_hash=$(echo "$diff_content" | _compute_hash_stdin 2>/dev/null || echo "")
+    else
+      # Empty diff: generate unique hash to avoid collision (all empty diffs
+      # would otherwise share the same hash, causing silent upsert overwrites)
+      diff_hash=$(echo "empty-${project_path}-${git_branch}-${git_commit}-$(date +%s%N)-$$" \
+        | _compute_hash_stdin 2>/dev/null || echo "")
+    fi
 
     # Save to database
     db_save_review "$project_path" "$project_name" "$git_branch" "$git_commit" \
