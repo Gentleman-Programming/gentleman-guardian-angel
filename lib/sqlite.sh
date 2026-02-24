@@ -76,6 +76,59 @@ SQL
 }
 
 # ============================================================================
+# SQL Sanitization Helpers
+# ============================================================================
+
+# Escape a string for safe use in SQL single-quoted literals.
+# Doubles single quotes: O'Brien → O''Brien
+# Usage: local safe_val; safe_val=$(_sql_escape "$raw_value")
+_sql_escape() {
+    printf '%s' "${1//\'/\'\'}"
+}
+
+# Validate that a value is a positive integer (for LIMIT, ID, COUNT, etc.).
+# Returns 0 if valid, 1 if not. Outputs the sanitized value or a default.
+# Usage: limit=$(_sql_validate_int "$user_input" 50)
+_sql_validate_int() {
+    local value="$1"
+    local default="${2:-0}"
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$value"
+    else
+        printf '%s' "$default"
+    fi
+}
+
+# Sanitize a string for FTS5 MATCH queries.
+# Wraps each whitespace-separated token in double quotes to prevent
+# FTS5 operator injection (AND, OR, NOT, NEAR, etc.).
+# Usage: local safe_q; safe_q=$(_fts5_sanitize "$raw_query")
+_fts5_sanitize() {
+    local query="$1"
+    local sanitized=""
+
+    # Remove characters that are special in FTS5: " ( ) * ^
+    query="${query//\"/}"
+    query="${query//\(/}"
+    query="${query//\)/}"
+    query="${query//\*/}"
+    query="${query//^/}"
+
+    # Wrap each token in double quotes
+    local token
+    for token in $query; do
+        [[ -z "$token" ]] && continue
+        if [[ -n "$sanitized" ]]; then
+            sanitized="$sanitized \"$token\""
+        else
+            sanitized="\"$token\""
+        fi
+    done
+
+    printf '%s' "$sanitized"
+}
+
+# ============================================================================
 # CRUD Operations
 # ============================================================================
 
