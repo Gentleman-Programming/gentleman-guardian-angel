@@ -76,7 +76,7 @@ validate_config() {
     # Check sqlite3 is available
     if ! command -v sqlite3 &> /dev/null; then
         echo "Error: sqlite3 not found. Please install sqlite3." >&2
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
     # Check jq is available (needed for JSON processing)
@@ -90,11 +90,11 @@ validate_config() {
     if [[ ! -d "$db_dir" ]]; then
         if ! mkdir -p "$db_dir" 2>/dev/null; then
             echo "Error: Cannot create database directory: $db_dir" >&2
-            ((errors++))
+            errors=$((errors + 1))
         fi
     elif [[ ! -w "$db_dir" ]]; then
         echo "Error: Cannot write to database directory: $db_dir" >&2
-        ((errors++))
+        errors=$((errors + 1))
     fi
 
     return $errors
