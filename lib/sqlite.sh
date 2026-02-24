@@ -165,8 +165,7 @@ db_save_review() {
     local model; model=$(_sql_escape "${12:-}")
     local duration_ms; duration_ms=$(_sql_validate_int "${13:-0}" 0)
 
-    sqlite3 "$db_path" <<SQL
-INSERT INTO reviews (
+    local sql="INSERT INTO reviews (
     project_path, project_name, git_branch, git_commit,
     files, files_count, diff_content, diff_hash,
     result, status, provider, model, duration_ms
@@ -187,8 +186,8 @@ ON CONFLICT(diff_hash) DO UPDATE SET
     status = excluded.status,
     provider = excluded.provider,
     model = excluded.model,
-    duration_ms = excluded.duration_ms;
-SQL
+    duration_ms = excluded.duration_ms;"
+    sqlite3 "$db_path" <<< "$sql"
 }
 
 # Get reviews with optional filters
@@ -211,8 +210,7 @@ db_get_reviews() {
         fi
     fi
 
-    sqlite3 "$db_path" <<SQL
-SELECT json_group_array(json_object(
+    local sql="SELECT json_group_array(json_object(
     'id', id,
     'created_at', created_at,
     'status', status,
@@ -227,8 +225,8 @@ FROM (
     $where_clause
     ORDER BY created_at DESC
     LIMIT $limit
-);
-SQL
+);"
+    sqlite3 "$db_path" <<< "$sql"
 }
 
 # Get a single review by ID
@@ -236,8 +234,7 @@ db_get_review() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
     local review_id; review_id=$(_sql_validate_int "$1" 0)
 
-    sqlite3 "$db_path" <<SQL
-SELECT json_group_array(json_object(
+    local sql="SELECT json_group_array(json_object(
     'id', id,
     'created_at', created_at,
     'project_path', project_path,
@@ -255,8 +252,8 @@ SELECT json_group_array(json_object(
     'duration_ms', duration_ms,
     'embedding', embedding
 ))
-FROM reviews WHERE id = $review_id;
-SQL
+FROM reviews WHERE id = $review_id;"
+    sqlite3 "$db_path" <<< "$sql"
 }
 
 # ============================================================================
@@ -282,8 +279,7 @@ db_search_reviews() {
     # output and build JSON manually for maximum compatibility.
     local sep='§'
     local rows
-    rows=$(sqlite3 -separator "$sep" "$db_path" <<SQL
-SELECT
+    rows=$(sqlite3 -separator "$sep" "$db_path" <<< "SELECT
     r.id,
     r.created_at,
     r.status,
@@ -295,9 +291,8 @@ FROM reviews_fts
 JOIN reviews r ON reviews_fts.rowid = r.id
 WHERE reviews_fts MATCH '$query'
 ORDER BY bm25(reviews_fts)
-LIMIT $limit;
-SQL
-)
+LIMIT $limit;"
+    )
 
     # Build JSON array from rows
     if [[ -z "$rows" ]]; then
@@ -332,8 +327,7 @@ db_search_by_status() {
     local status; status=$(_sql_escape "$1")
     local limit; limit=$(_sql_validate_int "${2:-20}" 20)
 
-    sqlite3 "$db_path" <<SQL
-SELECT json_group_array(json_object(
+    local sql="SELECT json_group_array(json_object(
     'id', id,
     'created_at', created_at,
     'project_name', project_name,
@@ -346,8 +340,8 @@ FROM (
     WHERE status = '$status'
     ORDER BY created_at DESC
     LIMIT $limit
-);
-SQL
+);"
+    sqlite3 "$db_path" <<< "$sql"
 }
 
 # ============================================================================
@@ -405,8 +399,7 @@ db_cleanup() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
     local keep; keep=$(_sql_validate_int "${1:-100}" 100)
 
-    sqlite3 "$db_path" <<SQL
-DELETE FROM reviews
+    local sql="DELETE FROM reviews
 WHERE id NOT IN (
     SELECT id FROM (
         SELECT id, ROW_NUMBER() OVER (
@@ -416,8 +409,8 @@ WHERE id NOT IN (
         FROM reviews
     )
     WHERE rn <= $keep
-);
-SQL
+);"
+    sqlite3 "$db_path" <<< "$sql"
 
     # Vacuum to reclaim space
     sqlite3 "$db_path" "VACUUM;"
