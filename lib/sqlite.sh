@@ -143,6 +143,18 @@ _fts5_sanitize() {
     printf '%s' "$sanitized"
 }
 
+# Normalize json_group_array output: SQLite returns '[null]' instead of '[]'
+# when no rows match a query. This helper fixes that.
+# Usage: local result; result=$(_json_array_fix "$(sqlite3 ...)")
+_json_array_fix() {
+    local output="$1"
+    if [[ "$output" == '[null]' ]] || [[ -z "$output" ]]; then
+        echo "[]"
+    else
+        echo "$output"
+    fi
+}
+
 # ============================================================================
 # CRUD Operations
 # ============================================================================
@@ -187,7 +199,10 @@ ON CONFLICT(diff_hash) DO UPDATE SET
     provider = excluded.provider,
     model = excluded.model,
     duration_ms = excluded.duration_ms;"
-    sqlite3 "$db_path" <<< "$sql"
+    if ! sqlite3 "$db_path" <<< "$sql"; then
+        echo "Error: failed to save review to database" >&2
+        return 1
+    fi
 }
 
 # Get reviews with optional filters
@@ -226,10 +241,8 @@ FROM (
     ORDER BY created_at DESC
     LIMIT $limit
 );"
-    sqlite3 "$db_path" <<< "$sql"
+    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
 }
-
-# Get a single review by ID
 db_get_review() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
     local review_id; review_id=$(_sql_validate_int "$1" 0)
@@ -253,7 +266,7 @@ db_get_review() {
     'embedding', embedding
 ))
 FROM reviews WHERE id = $review_id;"
-    sqlite3 "$db_path" <<< "$sql"
+    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
 }
 
 # ============================================================================
@@ -341,7 +354,7 @@ FROM (
     ORDER BY created_at DESC
     LIMIT $limit
 );"
-    sqlite3 "$db_path" <<< "$sql"
+    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
 }
 
 # ============================================================================
@@ -368,7 +381,7 @@ SQL
 db_stats_by_project() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
 
-    sqlite3 "$db_path" <<'SQL'
+    _json_array_fix "$(sqlite3 "$db_path" <<'SQL'
 SELECT json_group_array(json_object(
     'project_name', project_name,
     'review_count', review_count,
@@ -388,6 +401,7 @@ FROM (
     ORDER BY review_count DESC
 );
 SQL
+    )"
 }
 
 # ============================================================================
