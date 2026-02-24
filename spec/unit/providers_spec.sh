@@ -613,4 +613,107 @@ EOF
       The output should eq "claude"
     End
   End
+
+  # ==========================================================================
+  # execute_gemini() --yolo conditional (Copilot review feedback)
+  # ==========================================================================
+
+  Describe 'execute_gemini() --yolo conditional'
+    # Mock is_gemini_authenticated to always pass
+    setup_gemini() {
+      unset CI
+      unset GGA_NONINTERACTIVE
+    }
+
+    BeforeEach 'setup_gemini'
+
+    It 'passes --yolo when CI=true'
+      is_gemini_authenticated() { return 0; }
+      gemini() {
+        echo "ARGS:$*"
+      }
+      export CI=true
+
+      When call execute_gemini "test prompt"
+      The output should include "ARGS:--yolo"
+    End
+
+    It 'passes --yolo when GGA_NONINTERACTIVE=true'
+      is_gemini_authenticated() { return 0; }
+      gemini() {
+        echo "ARGS:$*"
+      }
+      export GGA_NONINTERACTIVE=true
+
+      When call execute_gemini "test prompt"
+      The output should include "ARGS:--yolo"
+    End
+
+    It 'does NOT pass --yolo in normal interactive mode'
+      is_gemini_authenticated() { return 0; }
+      gemini() {
+        echo "ARGS:$*"
+      }
+
+      When call execute_gemini "test prompt"
+      The output should not include "--yolo"
+    End
+
+    It 'fails when gemini is not authenticated'
+      is_gemini_authenticated() { return 1; }
+
+      When call execute_gemini "test prompt"
+      The status should be failure
+      The stderr should include "not authenticated"
+      The output should include "Please log in"
+    End
+  End
+
+  # ==========================================================================
+  # execute_provider_with_timeout() gemini --yolo sync
+  # ==========================================================================
+  # NOTE: execute_provider_with_timeout runs `bash -c "... | gemini ..."` which
+  # spawns a new shell. Shell function mocks don't propagate to subprocesses.
+  # We use a PATH-based mock: a temp script called "gemini" that echoes its args.
+
+  Describe 'execute_provider_with_timeout() gemini --yolo sync'
+    setup_gemini_timeout() {
+      export GGA_NO_SPINNER=1
+      unset CI
+      unset GGA_NONINTERACTIVE
+      # Create a fake gemini script that echoes its arguments
+      MOCK_BIN_DIR="$(mktemp -d)"
+      printf '#!/usr/bin/env bash\necho "GEMINI_ARGS:$*"\n' > "$MOCK_BIN_DIR/gemini"
+      chmod +x "$MOCK_BIN_DIR/gemini"
+      export PATH="$MOCK_BIN_DIR:$PATH"
+    }
+
+    cleanup_gemini_timeout() {
+      unset GGA_NO_SPINNER
+      unset CI
+      unset GGA_NONINTERACTIVE
+      # Remove the mock bin dir from PATH and filesystem
+      if [[ -n "${MOCK_BIN_DIR:-}" ]]; then
+        export PATH="${PATH#"$MOCK_BIN_DIR:"}"
+        rm -rf "$MOCK_BIN_DIR"
+      fi
+    }
+
+    BeforeEach 'setup_gemini_timeout'
+    AfterEach 'cleanup_gemini_timeout'
+
+    It 'includes --yolo in timeout wrapper when CI=true'
+      export CI=true
+
+      When call execute_provider_with_timeout "gemini" "test prompt" 5
+      The output should include "--yolo"
+      The stderr should be present
+    End
+
+    It 'does NOT include --yolo in timeout wrapper for interactive mode'
+      When call execute_provider_with_timeout "gemini" "test prompt" 5
+      The output should not include "--yolo"
+      The stderr should be present
+    End
+  End
 End
