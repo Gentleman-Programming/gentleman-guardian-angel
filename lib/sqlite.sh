@@ -69,7 +69,7 @@ END;
 CREATE INDEX IF NOT EXISTS idx_reviews_project ON reviews(project_name);
 CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
 CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_reviews_diff_hash ON reviews(diff_hash);
+-- diff_hash already has a UNIQUE constraint which auto-creates an index
 SQL
     then
         echo "Error: failed to initialize database at $db_path" >&2
