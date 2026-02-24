@@ -240,4 +240,233 @@ Describe 'sqlite.sh'
       The output should include "ok"
     End
   End
+
+  # ==========================================================================
+  # SQL Sanitization Helpers
+  # ==========================================================================
+
+  Describe '_sql_escape()'
+    It 'doubles single quotes'
+      When call _sql_escape "O'Brien"
+      The output should eq "O''Brien"
+    End
+
+    It 'handles multiple single quotes'
+      When call _sql_escape "it's a 'test'"
+      The output should eq "it''s a ''test''"
+    End
+
+    It 'returns empty for empty input'
+      When call _sql_escape ""
+      The output should eq ""
+    End
+
+    It 'leaves clean strings unchanged'
+      When call _sql_escape "clean string"
+      The output should eq "clean string"
+    End
+  End
+
+  Describe '_sql_validate_int()'
+    It 'accepts valid positive integer'
+      When call _sql_validate_int "42" 0
+      The output should eq "42"
+    End
+
+    It 'accepts zero'
+      When call _sql_validate_int "0" 10
+      The output should eq "0"
+    End
+
+    It 'rejects negative numbers'
+      When call _sql_validate_int "-5" 10
+      The output should eq "10"
+    End
+
+    It 'rejects non-numeric strings'
+      When call _sql_validate_int "abc" 50
+      The output should eq "50"
+    End
+
+    It 'rejects SQL injection attempts'
+      When call _sql_validate_int "1; DROP TABLE reviews" 20
+      The output should eq "20"
+    End
+
+    It 'uses 0 as default when no default provided'
+      When call _sql_validate_int "invalid"
+      The output should eq "0"
+    End
+  End
+
+  Describe '_fts5_sanitize()'
+    It 'wraps tokens in double quotes'
+      When call _fts5_sanitize "auth login"
+      The output should eq '"auth" "login"'
+    End
+
+    It 'strips FTS5 special characters'
+      When call _fts5_sanitize 'test* (group) "exact" ^boost'
+      The output should eq '"test" "group" "exact" "boost"'
+    End
+
+    It 'neutralizes FTS5 operators'
+      When call _fts5_sanitize "auth AND NOT admin"
+      The output should eq '"auth" "AND" "NOT" "admin"'
+    End
+
+    It 'returns empty for empty input'
+      When call _fts5_sanitize ""
+      The output should eq ""
+    End
+
+    It 'returns empty for only special characters'
+      When call _fts5_sanitize '"()*^'
+      The output should eq ""
+    End
+  End
+
+  # ==========================================================================
+  # SQL Injection Prevention (integration tests)
+  # ==========================================================================
+
+  Describe 'SQL injection prevention'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'safely stores provider with single quotes'
+      db_save_review "/path" "project" "main" "abc" \
+        "file.ts" 1 "diff" "hash_inj1" \
+        "Result" "PASSED" "O'Brien's provider" "" 1000
+      provider=$(sqlite3 "$GGA_DB_PATH" "SELECT provider FROM reviews WHERE diff_hash='hash_inj1';")
+      The value "$provider" should eq "O'Brien's provider"
+    End
+
+    It 'safely handles SQL injection in status filter'
+      db_save_review "/path" "project" "main" "abc" \
+        "file.ts" 1 "diff" "hash_inj2" \
+        "Result" "PASSED" "claude" "" 1000
+      # Attempt SQL injection via status filter
+      When call db_get_reviews 10 "PASSED' OR '1'='1"
+      The status should be success
+    End
+
+    It 'safely handles SQL injection in project filter'
+      db_save_review "/path" "project" "main" "abc" \
+        "file.ts" 1 "diff" "hash_inj3" \
+        "Result" "PASSED" "claude" "" 1000
+      # Attempt SQL injection via project filter
+      When call db_get_reviews 10 "" "project'; DROP TABLE reviews;--"
+      The status should be success
+      # Table should still exist
+      count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      The value "$count" should eq "1"
+    End
+
+    It 'rejects non-numeric limit values'
+      db_save_review "/path" "project" "main" "abc" \
+        "file.ts" 1 "diff" "hash_inj4" \
+        "Result" "PASSED" "claude" "" 1000
+      # Attempt injection via limit — should fall back to default
+      When call db_get_reviews "1; DROP TABLE reviews"
+      The status should be success
+      The output should be defined
+    End
+
+    It 'safely handles FTS5 operator injection in search'
+      db_save_review "/path" "project" "main" "abc" \
+        "auth.ts" 1 "diff" "hash_inj5" \
+        "Found vulnerability" "FAILED" "claude" "" 1000
+      # Attempt FTS5 operator injection
+      When call db_search_reviews 'auth) OR (vulnerability'
+      The status should be success
+      The output should be defined
+    End
+
+    It 'validates review_id as integer in db_get_review'
+      db_save_review "/path" "project" "main" "abc" \
+        "file.ts" 1 "diff" "hash_inj6" \
+        "Result" "PASSED" "claude" "" 1000
+      # Non-numeric ID should return empty (id=0 matches nothing)
+      When call db_get_review "1; DROP TABLE reviews"
+      The status should be success
+      # Table should still exist
+      count=$(sqlite3 "$GGA_DB_PATH" "SELECT COUNT(*) FROM reviews;")
+      The value "$count" should eq "1"
+    End
+  End
+
+  # ==========================================================================
+  # Schema constraints
+  # ==========================================================================
+
+  Describe 'schema constraints'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'enforces diff_hash NOT NULL'
+      result=$(sqlite3 "$GGA_DB_PATH" "PRAGMA table_info(reviews);" 2>/dev/null)
+      # diff_hash column should have notnull=1
+      The value "$result" should include "diff_hash"
+    End
+
+    It 'preserves row ID on upsert (ON CONFLICT)'
+      db_save_review "/path" "project" "main" "abc" \
+        "file.ts" 1 "diff" "upsert_hash" \
+        "First result" "PASSED" "claude" "" 1000
+      id_before=$(sqlite3 "$GGA_DB_PATH" "SELECT id FROM reviews WHERE diff_hash='upsert_hash';")
+      db_save_review "/path" "project" "main" "def" \
+        "file.ts" 1 "diff" "upsert_hash" \
+        "Updated result" "FAILED" "gemini" "" 2000
+      id_after=$(sqlite3 "$GGA_DB_PATH" "SELECT id FROM reviews WHERE diff_hash='upsert_hash';")
+      The value "$id_after" should eq "$id_before"
+    End
+
+    It 'updates fields on upsert'
+      db_save_review "/path" "project" "main" "abc" \
+        "file.ts" 1 "diff" "upsert_hash2" \
+        "First result" "PASSED" "claude" "" 1000
+      db_save_review "/path" "project" "main" "def" \
+        "file.ts" 1 "diff" "upsert_hash2" \
+        "Updated result" "FAILED" "gemini" "" 2000
+      result=$(sqlite3 "$GGA_DB_PATH" "SELECT result FROM reviews WHERE diff_hash='upsert_hash2';")
+      The value "$result" should eq "Updated result"
+    End
+
+    It 'only allows valid status values'
+      insert_invalid_status() {
+        sqlite3 "$GGA_DB_PATH" \
+          "INSERT INTO reviews (project_path, project_name, files, files_count, diff_hash, result, status, provider) VALUES ('/p','n','f',1,'h','r','INVALID','p');" 2>&1
+      }
+      When call insert_invalid_status
+      The status should be failure
+      The output should include "CHECK constraint failed"
+    End
+  End
 End

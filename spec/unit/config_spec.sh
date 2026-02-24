@@ -62,6 +62,47 @@ Describe 'config.sh'
       When call load_env_config
       The variable GGA_RAG_ENABLED should eq "true"
     End
+
+    It 'rejects DB path with backticks'
+      export GGA_DB_PATH='`rm -rf /`'
+      When call load_env_config
+      The status should be failure
+      The stderr should include "invalid characters"
+    End
+
+    It 'rejects DB path with $() command substitution'
+      export GGA_DB_PATH='$(rm -rf /)/db.sqlite'
+      When call load_env_config
+      The status should be failure
+      The stderr should include "invalid characters"
+    End
+
+    It 'rejects DB path with semicolons'
+      export GGA_DB_PATH='/tmp/db.sqlite; rm -rf /'
+      When call load_env_config
+      The status should be failure
+      The stderr should include "invalid characters"
+    End
+
+    It 'rejects DB path with pipe'
+      export GGA_DB_PATH='/tmp/db.sqlite | cat /etc/passwd'
+      When call load_env_config
+      The status should be failure
+      The stderr should include "invalid characters"
+    End
+
+    It 'accepts valid DB path with spaces'
+      export GGA_DB_PATH="$TEMP_DIR/my database/gga.db"
+      When call load_env_config
+      The status should be success
+      The variable GGA_DB_PATH should eq "$TEMP_DIR/my database/gga.db"
+    End
+
+    It 'accepts valid DB path with hyphens and dots'
+      export GGA_DB_PATH="$TEMP_DIR/my-project.v2/gga.db"
+      When call load_env_config
+      The status should be success
+    End
   End
 
   Describe 'get_config()'
