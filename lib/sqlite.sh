@@ -176,6 +176,13 @@ INSERT INTO reviews (
     '$result', '$status', '$provider', '$model', $duration_ms
 )
 ON CONFLICT(diff_hash) DO UPDATE SET
+    project_path = excluded.project_path,
+    project_name = excluded.project_name,
+    git_branch = excluded.git_branch,
+    git_commit = excluded.git_commit,
+    files = excluded.files,
+    files_count = excluded.files_count,
+    diff_content = excluded.diff_content,
     result = excluded.result,
     status = excluded.status,
     provider = excluded.provider,

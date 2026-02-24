@@ -459,6 +459,25 @@ Describe 'sqlite.sh'
       The value "$result" should eq "Updated result"
     End
 
+    It 'updates metadata columns on upsert (branch, commit, files)'
+      db_save_review "/path/old" "old-project" "main" "aaa" \
+        "old.ts" 1 "diff-old" "meta_hash" \
+        "First" "PASSED" "claude" "" 500
+      db_save_review "/path/new" "new-project" "feature" "bbb" \
+        "new.ts,extra.ts" 2 "diff-new" "meta_hash" \
+        "Second" "FAILED" "gemini" "" 1500
+
+      branch=$(sqlite3 "$GGA_DB_PATH" "SELECT git_branch FROM reviews WHERE diff_hash='meta_hash';")
+      commit=$(sqlite3 "$GGA_DB_PATH" "SELECT git_commit FROM reviews WHERE diff_hash='meta_hash';")
+      files_count=$(sqlite3 "$GGA_DB_PATH" "SELECT files_count FROM reviews WHERE diff_hash='meta_hash';")
+      project_name=$(sqlite3 "$GGA_DB_PATH" "SELECT project_name FROM reviews WHERE diff_hash='meta_hash';")
+
+      The value "$branch" should eq "feature"
+      The value "$commit" should eq "bbb"
+      The value "$files_count" should eq "2"
+      The value "$project_name" should eq "new-project"
+    End
+
     It 'only allows valid status values'
       insert_invalid_status() {
         sqlite3 "$GGA_DB_PATH" \
