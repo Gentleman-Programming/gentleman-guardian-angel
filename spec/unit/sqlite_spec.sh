@@ -453,9 +453,11 @@ Describe 'sqlite.sh'
     AfterEach 'cleanup'
 
     It 'enforces diff_hash NOT NULL'
-      result=$(sqlite3 "$GGA_DB_PATH" "PRAGMA table_info(reviews);" 2>/dev/null)
-      # diff_hash column should have notnull=1
-      The value "$result" should include "diff_hash"
+      # PRAGMA table_info format: cid|name|type|notnull|dflt_value|pk
+      # notnull field (4th column, 0-indexed) should be 1 for diff_hash
+      result=$(sqlite3 "$GGA_DB_PATH" "PRAGMA table_info(reviews);" 2>/dev/null \
+        | awk -F'|' '$2=="diff_hash"{print $4}')
+      The value "$result" should eq "1"
     End
 
     It 'preserves row ID on upsert (ON CONFLICT)'

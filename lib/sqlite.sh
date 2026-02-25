@@ -91,7 +91,7 @@ _sql_escape() {
 }
 
 # Validate that a value is a positive integer (for LIMIT, ID, COUNT, etc.).
-# Returns 0 if valid, 1 if not. Outputs the sanitized value or a default.
+# Always succeeds (returns 0). Outputs the value if valid, or the default.
 # Usage: limit=$(_sql_validate_int "$user_input" 50)
 _sql_validate_int() {
     local value="$1"
