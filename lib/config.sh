@@ -6,8 +6,8 @@
 # Configuration management via environment variables with sensible defaults.
 # Priority: Environment variables (GGA_*) > Built-in defaults
 # Note: This module handles env-based config only. File-based config
-# (global ~/.config/gga/config and project .gga) is handled by load_config()
-# in bin/gga, which takes precedence over these defaults.
+# (global ~/.config/gga/config and project .gga) is loaded separately by
+# load_config() in bin/gga before commands invoke these helpers.
 # ============================================================================
 
 # Default values

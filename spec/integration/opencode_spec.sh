@@ -18,7 +18,11 @@ Describe 'OpenCode Integration'
     ! command -v opencode &> /dev/null && return 0
     # Check if service is responding (quick test with timeout to prevent hangs)
     local test_result
-    test_result=$(timeout 5s opencode --prompt "test" 2>&1) || return 0
+    if command -v timeout &> /dev/null; then
+      test_result=$(timeout 5s opencode --prompt "test" 2>&1) || return 0
+    else
+      test_result=$(opencode --prompt "test" 2>&1) || return 0
+    fi
     [[ "$test_result" == *"Unable to connect"* ]] && return 0
     [[ "$test_result" == *"Error"* ]] && return 0
     return 1
