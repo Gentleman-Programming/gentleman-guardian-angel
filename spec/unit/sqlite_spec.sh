@@ -190,6 +190,25 @@ Describe 'sqlite.sh'
       When call db_search_reviews "nonexistent_term_xyz"
       The output should eq "[]"
     End
+
+    It 'returns [] and error on sqlite3 failure'
+      export GGA_DB_PATH="/nonexistent/path/to/bad.db"
+      When call db_search_reviews "test"
+      The output should eq "[]"
+      The error should include "Error"
+      The status should eq 1
+    End
+
+    It 'properly escapes special characters in JSON output'
+      Skip if "sqlite3 not installed" no_sqlite3
+      # Insert review with special chars in project_name
+      db_save_review "/path3" 'project "quoted"' "main" "abc3" \
+        "file.ts" 1 "code with special chars" "hash_special" \
+        "Result with newline" "PASSED" "claude" "" 500
+      When call db_search_reviews "special"
+      The output should include 'project \"quoted\"'
+      The status should be success
+    End
   End
 
   Describe 'db_stats()'
@@ -510,6 +529,58 @@ Describe 'sqlite.sh'
     It 'passes through valid JSON array'
       When call _json_array_fix '[{"id":1}]'
       The output should eq '[{"id":1}]'
+    End
+  End
+
+  # ==========================================================================
+  # _json_escape helper
+  # ==========================================================================
+
+  Describe '_json_escape()'
+    It 'escapes backslashes'
+      When call _json_escape 'path\to\file'
+      The output should eq 'path\\to\\file'
+    End
+
+    It 'escapes double quotes'
+      When call _json_escape 'say "hello"'
+      The output should eq 'say \"hello\"'
+    End
+
+    It 'escapes newlines'
+      _escape_newline_test() { _json_escape $'line1\nline2'; }
+      When call _escape_newline_test
+      The output should eq 'line1\nline2'
+    End
+
+    It 'escapes tabs'
+      When call _json_escape "col1	col2"
+      The output should eq 'col1\tcol2'
+    End
+
+    It 'escapes carriage returns'
+      _escape_cr_test() { _json_escape $'hello\rworld'; }
+      When call _escape_cr_test
+      The output should eq 'hello\rworld'
+    End
+
+    It 'handles combined special characters'
+      _escape_combined_test() {
+        local input=$'line "1"\nline\t2\\'
+        _json_escape "$input"
+      }
+      When call _escape_combined_test
+      The output should eq 'line \"1\"\nline\t2\\'
+    End
+
+    It 'passes through clean strings unchanged'
+      When call _json_escape 'clean string'
+      The output should eq 'clean string'
+    End
+
+    It 'handles empty input'
+      When call _json_escape ''
+      The output should eq ''
     End
   End
 

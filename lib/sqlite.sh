@@ -143,6 +143,21 @@ _fts5_sanitize() {
     printf '%s' "$sanitized"
 }
 
+# Escape a string for safe inclusion as a JSON string value.
+# Handles backslashes, double quotes, and control characters.
+# Usage: local safe; safe=$(_json_escape "$raw_value")
+_json_escape() {
+    local s=$1
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/\\n}
+    s=${s//$'\r'/\\r}
+    s=${s//$'\t'/\\t}
+    s=${s//$'\b'/\\b}
+    s=${s//$'\f'/\\f}
+    printf '%s' "$s"
+}
+
 # Normalize json_group_array output: SQLite returns '[null]' instead of '[]'
 # when no rows match a query. This helper fixes that.
 # Usage: local result; result=$(_json_array_fix "$(sqlite3 ...)")
@@ -286,13 +301,12 @@ db_search_reviews() {
         return 0
     fi
 
-    local result
     # FTS5 auxiliary functions (snippet, bm25) cannot be used inside
     # aggregate functions like json_group_array(). Use separator-based
     # output and build JSON manually for maximum compatibility.
     local sep='§'
     local rows
-    rows=$(sqlite3 -separator "$sep" "$db_path" <<< "SELECT
+    if ! rows=$(sqlite3 -separator "$sep" "$db_path" <<< "SELECT
     r.id,
     r.created_at,
     r.status,
@@ -305,7 +319,11 @@ JOIN reviews r ON reviews_fts.rowid = r.id
 WHERE reviews_fts MATCH '$query'
 ORDER BY bm25(reviews_fts)
 LIMIT $limit;"
-    )
+    ); then
+        echo "Error: FTS5 search query failed" >&2
+        echo "[]"
+        return 1
+    fi
 
     # Build JSON array from rows
     if [[ -z "$rows" ]]; then
@@ -317,9 +335,13 @@ LIMIT $limit;"
     local first=true
     while IFS="$sep" read -r id created_at status project_name files_count match_snippet rank; do
         [[ -z "$id" ]] && continue
-        # Escape double quotes in snippet for valid JSON
-        match_snippet="${match_snippet//\\/\\\\}"
-        match_snippet="${match_snippet//\"/\\\"}"
+
+        # JSON-escape all string fields
+        created_at=$(_json_escape "$created_at")
+        status=$(_json_escape "$status")
+        project_name=$(_json_escape "$project_name")
+        match_snippet=$(_json_escape "$match_snippet")
+
         if [[ "$first" == true ]]; then
             first=false
         else
