@@ -8,6 +8,34 @@
 # ============================================================================
 
 # ============================================================================
+# Privacy Helpers
+# ============================================================================
+
+# Strip sensitive data from text before storage.
+# Two layers: explicit <private> tags + common secret patterns.
+# Uses portable sed (no GNU-only flags) + awk for multi-line PEM.
+# Usage: cleaned=$(_strip_private "text with secrets")
+_strip_private() {
+    local text="$1"
+    [[ -z "$text" ]] && return 0
+
+    printf '%s' "$text" | sed -E \
+        -e 's/<private>[^<]*<\/private>/[REDACTED]/g' \
+        -e 's/(sk-|sk_live_|sk_test_)[a-zA-Z0-9_-]{10,}/[REDACTED]/g' \
+        -e 's/(ghp_|gho_|ghu_|ghs_|ghr_)[a-zA-Z0-9]{10,}/[REDACTED]/g' \
+        -e 's/AIza[a-zA-Z0-9_-]{30,}/[REDACTED]/g' \
+        -e 's/([Bb][Ee][Aa][Rr][Ee][Rr]|[Tt][Oo][Kk][Ee][Nn]) [a-zA-Z0-9._-]{20,}/\1 [REDACTED]/g' \
+        -e 's/([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Aa][Pp][Ii][Kk][Ee][Yy]|[Aa][Pp][Ii]_[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]_[Kk][Ee][Yy])=[^ "'\'']+/\1=[REDACTED]/g' \
+    | awk '
+        BEGIN { in_key = 0 }
+        /-----BEGIN .*PRIVATE KEY-----/ { print "[REDACTED_KEY]"; in_key = 1; next }
+        in_key && /-----END .*PRIVATE KEY-----/ { in_key = 0; next }
+        in_key { next }
+        { print }
+    '
+}
+
+# ============================================================================
 # Database Initialization
 # ============================================================================
 
@@ -177,15 +205,20 @@ _json_array_fix() {
 # Usage: db_save_review "project_path" "project_name" "branch" "commit" "files" count "diff" "diff_hash" "result" "status" "provider" "model" duration_ms
 db_save_review() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+
+    # Strip sensitive data before storage (two-layer privacy)
+    local clean_diff; clean_diff=$(_strip_private "$7")
+    local clean_result; clean_result=$(_strip_private "$9")
+
     local project_path; project_path=$(_sql_escape "$1")
     local project_name; project_name=$(_sql_escape "$2")
     local git_branch; git_branch=$(_sql_escape "$3")
     local git_commit; git_commit=$(_sql_escape "$4")
     local files; files=$(_sql_escape "$5")
     local files_count; files_count=$(_sql_validate_int "$6" 0)
-    local diff_content; diff_content=$(_sql_escape "$7")
+    local diff_content; diff_content=$(_sql_escape "$clean_diff")
     local diff_hash; diff_hash=$(_sql_escape "$8")
-    local result; result=$(_sql_escape "$9")
+    local result; result=$(_sql_escape "$clean_result")
     local status; status=$(_sql_escape "${10}")
     local provider; provider=$(_sql_escape "${11}")
     local model; model=$(_sql_escape "${12:-}")
