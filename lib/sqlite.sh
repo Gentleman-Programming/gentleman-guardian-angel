@@ -97,6 +97,41 @@ CREATE INDEX IF NOT EXISTS idx_reviews_project ON reviews(project_name);
 CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
 CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at DESC);
 -- diff_hash already has a UNIQUE constraint which auto-creates an index
+
+-- Structured insights extracted from reviews
+CREATE TABLE IF NOT EXISTS review_insights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id INTEGER NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK(type IN (
+        'bugfix','security','pattern','decision','style','performance'
+    )),
+    what TEXT NOT NULL,
+    why TEXT,
+    file_path TEXT,
+    learned TEXT,
+    severity TEXT DEFAULT 'medium' CHECK(severity IN ('low','medium','high','critical')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_insights_type ON review_insights(type);
+CREATE INDEX IF NOT EXISTS idx_insights_review ON review_insights(review_id);
+CREATE INDEX IF NOT EXISTS idx_insights_severity ON review_insights(severity);
+
+-- FTS5 for insight search
+CREATE VIRTUAL TABLE IF NOT EXISTS insights_fts USING fts5(
+    what, why, learned, file_path, type,
+    content='review_insights', content_rowid='id'
+);
+
+CREATE TRIGGER IF NOT EXISTS insights_ai AFTER INSERT ON review_insights BEGIN
+    INSERT INTO insights_fts(rowid, what, why, learned, file_path, type)
+    VALUES (new.id, new.what, new.why, new.learned, new.file_path, new.type);
+END;
+
+CREATE TRIGGER IF NOT EXISTS insights_ad AFTER DELETE ON review_insights BEGIN
+    INSERT INTO insights_fts(insights_fts, rowid, what, why, learned, file_path, type)
+    VALUES ('delete', old.id, old.what, old.why, old.learned, old.file_path, old.type);
+END;
 SQL
     then
         echo "Error: failed to initialize database at $db_path" >&2
@@ -423,6 +458,211 @@ FROM (
         return 1
     fi
     _json_array_fix "$result"
+}
+
+# ============================================================================
+# Insight Operations
+# ============================================================================
+
+# Save a structured insight for a review.
+# Usage: db_save_insight review_id "type" "what" "why" "file_path" "learned" "severity"
+db_save_insight() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    local review_id; review_id=$(_sql_validate_int "$1" 0)
+    local type; type=$(_sql_escape "$2")
+    local what; what=$(_sql_escape "$3")
+    local why; why=$(_sql_escape "${4:-}")
+    local file_path; file_path=$(_sql_escape "${5:-}")
+    local learned; learned=$(_sql_escape "${6:-}")
+    local severity; severity=$(_sql_escape "${7:-medium}")
+
+    [[ "$review_id" -eq 0 ]] && { echo "Error: invalid review_id" >&2; return 1; }
+
+    sqlite3 "$db_path" <<SQL
+INSERT INTO review_insights (review_id, type, what, why, file_path, learned, severity)
+VALUES ($review_id, '$type', '$what', '$why', '$file_path', '$learned', '$severity');
+SQL
+}
+
+# Get insights for a review, ordered by severity priority.
+# Uses CASE expression for correct ordering (critical > high > medium > low).
+# Usage: db_get_insights review_id [limit]
+db_get_insights() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    local review_id; review_id=$(_sql_validate_int "$1" 0)
+    local limit; limit=$(_sql_validate_int "${2:-50}" 50)
+
+    local sql="SELECT json_group_array(json_object(
+    'id', id,
+    'review_id', review_id,
+    'type', type,
+    'what', what,
+    'why', why,
+    'file_path', file_path,
+    'learned', learned,
+    'severity', severity,
+    'created_at', created_at
+))
+FROM (
+    SELECT *
+    FROM review_insights
+    WHERE review_id = $review_id
+    ORDER BY
+        CASE severity
+            WHEN 'critical' THEN 1
+            WHEN 'high' THEN 2
+            WHEN 'medium' THEN 3
+            WHEN 'low' THEN 4
+            ELSE 5
+        END ASC,
+        id ASC
+    LIMIT $limit
+);"
+    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
+}
+
+# Full-text search across insights using FTS5 + BM25 ranking.
+# Usage: db_search_insights "query" [limit]
+db_search_insights() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    local query; query=$(_fts5_sanitize "$1")
+    local limit; limit=$(_sql_validate_int "${2:-20}" 20)
+
+    [[ -z "$query" ]] && { echo "[]"; return 0; }
+
+    local sep='§'
+    local rows
+    if ! rows=$(sqlite3 -separator "$sep" "$db_path" <<< "SELECT
+    ri.id,
+    ri.review_id,
+    ri.type,
+    ri.severity,
+    snippet(insights_fts, 0, '>>>', '<<<', '...', 32),
+    bm25(insights_fts)
+FROM insights_fts
+JOIN review_insights ri ON insights_fts.rowid = ri.id
+WHERE insights_fts MATCH '$query'
+ORDER BY bm25(insights_fts)
+LIMIT $limit;"
+    ); then
+        echo "[]"
+        return 1
+    fi
+
+    [[ -z "$rows" ]] && { echo "[]"; return 0; }
+
+    local json="["
+    local first=true
+    while IFS="$sep" read -r id review_id type severity match_snippet rank; do
+        [[ -z "$id" ]] && continue
+        match_snippet=$(_json_escape "$match_snippet")
+        if [[ "$first" == true ]]; then
+            first=false
+        else
+            json+=","
+        fi
+        json+="{\"id\":$id,\"review_id\":$review_id,\"type\":\"$type\","
+        json+="\"severity\":\"$severity\",\"match_snippet\":\"$match_snippet\",\"rank\":$rank}"
+    done <<< "$rows"
+    json+="]"
+    echo "$json"
+}
+
+# Get compact insight summaries for a project (for Engram export or context).
+# Usage: db_get_insight_summaries [project] [limit]
+db_get_insight_summaries() {
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    local project; project=$(_sql_escape "${1:-}")
+    local limit; limit=$(_sql_validate_int "${2:-20}" 20)
+
+    local where_clause=""
+    [[ -n "$project" ]] && where_clause="WHERE r.project_name = '$project'"
+
+    local sql="SELECT json_group_array(json_object(
+    'type', ri.type,
+    'what', ri.what,
+    'severity', ri.severity,
+    'file_path', ri.file_path,
+    'project', r.project_name,
+    'date', ri.created_at
+))
+FROM (
+    SELECT ri.*, r.project_name
+    FROM review_insights ri
+    JOIN reviews r ON ri.review_id = r.id
+    $where_clause
+    ORDER BY ri.created_at DESC
+    LIMIT $limit
+) sub
+JOIN review_insights ri ON ri.id = sub.id
+JOIN reviews r ON ri.review_id = r.id;"
+    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
+}
+
+# Extract structured insights from a review result text.
+# Parses the AI review output for common patterns and saves as insights.
+# Usage: extract_review_insights review_id "result_text" "files"
+extract_review_insights() {
+    local review_id; review_id=$(_sql_validate_int "$1" 0)
+    local result_text="$2"
+    local files="${3:-}"
+
+    [[ "$review_id" -eq 0 ]] && return 1
+    [[ -z "$result_text" ]] && return 0
+
+    local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
+    [[ ! -f "$db_path" ]] && return 1
+
+    # Check if insights table exists (backward compat)
+    local has_table
+    has_table=$(sqlite3 "$db_path" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='review_insights';" 2>/dev/null)
+    [[ "$has_table" != "1" ]] && return 0
+
+    local lower_result
+    lower_result=$(printf '%s' "$result_text" | tr '[:upper:]' '[:lower:]')
+    local count=0
+
+    # Security issues
+    if echo "$lower_result" | grep -qE '(security|vulnerab|injection|xss|csrf|auth.*bypass)'; then
+        local what
+        what=$(echo "$result_text" | grep -iE '(security|vulnerab|injection|xss|csrf)' | head -1 | sed 's/^[[:space:]]*//')
+        [[ -n "$what" ]] && {
+            db_save_insight "$review_id" "security" "$what" "" "" "" "high" 2>/dev/null
+            count=$((count + 1))
+        }
+    fi
+
+    # Bug fixes
+    if echo "$lower_result" | grep -qE '(bug|fix|error|crash|null.*pointer|undefined|exception)'; then
+        local what
+        what=$(echo "$result_text" | grep -iE '(bug|fix|error|crash|null|undefined|exception)' | head -1 | sed 's/^[[:space:]]*//')
+        [[ -n "$what" ]] && {
+            db_save_insight "$review_id" "bugfix" "$what" "" "" "" "medium" 2>/dev/null
+            count=$((count + 1))
+        }
+    fi
+
+    # Performance issues
+    if echo "$lower_result" | grep -qE '(performance|slow|optimize|n\+1|memory leak|latency)'; then
+        local what
+        what=$(echo "$result_text" | grep -iE '(performance|slow|optimize|n\+1|memory|latency)' | head -1 | sed 's/^[[:space:]]*//')
+        [[ -n "$what" ]] && {
+            db_save_insight "$review_id" "performance" "$what" "" "" "" "medium" 2>/dev/null
+            count=$((count + 1))
+        }
+    fi
+
+    # Pattern/convention mentions
+    if echo "$lower_result" | grep -qE '(pattern|convention|best.?practice|anti.?pattern|code.?smell)'; then
+        local what
+        what=$(echo "$result_text" | grep -iE '(pattern|convention|best.?practice|anti.?pattern|code.?smell)' | head -1 | sed 's/^[[:space:]]*//')
+        [[ -n "$what" ]] && {
+            db_save_insight "$review_id" "pattern" "$what" "" "" "" "low" 2>/dev/null
+            count=$((count + 1))
+        }
+    fi
+
+    echo "$count"
 }
 
 # ============================================================================
