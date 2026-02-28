@@ -26,6 +26,13 @@ load_env_config() {
     GGA_HISTORY_LIMIT="${GGA_HISTORY_LIMIT:-$DEFAULT_HISTORY_LIMIT}"
     GGA_SEARCH_LIMIT="${GGA_SEARCH_LIMIT:-$DEFAULT_SEARCH_LIMIT}"
 
+    # Engram integration (optional)
+    GGA_ENGRAM_ENABLED="${GGA_ENGRAM_ENABLED:-false}"
+    GGA_ENGRAM_HOST="${GGA_ENGRAM_HOST:-http://localhost:7437}"
+    GGA_ENGRAM_OUTPUT_DIR="${GGA_ENGRAM_OUTPUT_DIR:-}"
+    GGA_ENGRAM_TIMEOUT="${GGA_ENGRAM_TIMEOUT:-3}"
+    GGA_ENGRAM_CONTEXT_LIMIT="${GGA_ENGRAM_CONTEXT_LIMIT:-5}"
+
     # Validate GGA_DB_PATH to prevent command injection
     # Reject paths with shell metacharacters: backticks, $(), ;, |, &, newlines
     # Note: single quotes are valid Unix path chars and safe when double-quoted
@@ -45,6 +52,11 @@ load_env_config() {
     export GGA_MODEL
     export GGA_HISTORY_LIMIT
     export GGA_SEARCH_LIMIT
+    export GGA_ENGRAM_ENABLED
+    export GGA_ENGRAM_HOST
+    export GGA_ENGRAM_OUTPUT_DIR
+    export GGA_ENGRAM_TIMEOUT
+    export GGA_ENGRAM_CONTEXT_LIMIT
 }
 
 # Get a configuration value by key with optional default
@@ -102,4 +114,8 @@ show_config() {
     echo "  MODEL:             ${GGA_MODEL:-<not set>}"
     echo "  HISTORY_LIMIT:     $GGA_HISTORY_LIMIT"
     echo "  SEARCH_LIMIT:      $GGA_SEARCH_LIMIT"
+    echo "  ENGRAM_ENABLED:    ${GGA_ENGRAM_ENABLED:-false}"
+    echo "  ENGRAM_HOST:       ${GGA_ENGRAM_HOST:-http://localhost:7437}"
+    echo "  ENGRAM_TIMEOUT:    ${GGA_ENGRAM_TIMEOUT:-3}"
+    echo "  ENGRAM_CONTEXT:    ${GGA_ENGRAM_CONTEXT_LIMIT:-5}"
 }
