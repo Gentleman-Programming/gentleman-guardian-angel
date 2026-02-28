@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.7.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.8.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/bash-5.0%2B-orange.svg" alt="Bash">
   <img src="https://img.shields.io/badge/homebrew-tap-FBB040.svg" alt="Homebrew">
@@ -87,7 +87,7 @@ cd gga
 
 ```bash
 gga version
-# Output: gga v2.7.0
+# Output: gga v2.8.0
 ```
 
 ---
@@ -283,6 +283,9 @@ All files comply with the coding standards defined in AGENTS.md.
 | `cache status`         | Show cache status for current project                | `gga cache status`         |
 | `cache clear`          | Clear cache for current project                      | `gga cache clear`          |
 | `cache clear-all`      | Clear all cached data                                | `gga cache clear-all`      |
+| `engram check`         | Check Engram bridge status                           | `gga engram check`         |
+| `engram export <id>`   | Export review insights to Engram                     | `gga engram export <id>`   |
+| `engram recent [N]`    | Export insights from last N days                     | `gga engram recent [N]`    |
 | `help`                 | Show help message with all commands                  | `gga help`                 |
 | `version`              | Show installed version                               | `gga version`              |
 
@@ -1175,7 +1178,8 @@ gentleman-guardian-angel/
 ├── lib/
 │   ├── providers.sh                 # AI provider implementations
 │   ├── cache.sh                     # Smart caching logic
-│   └── pr_mode.sh                   # PR review mode functions
+│   ├── pr_mode.sh                   # PR review mode functions
+│   └── engram_bridge.sh             # Bidirectional Engram integration (export insights + consume context via HTTP API)
 ├── spec/                            # ShellSpec test suite
 │   ├── spec_helper.sh               # Test setup and helpers
 │   ├── unit/
@@ -1245,7 +1249,14 @@ shellspec spec/unit/my_feature_spec.sh
 
 ## 📋 Changelog
 
-### v2.7.0 (Latest)
+### v2.8.0 (Latest)
+
+- **Privacy stripping**: Two-layer secret redaction (explicit tags + pattern detection) applied before storage
+- **Structured insights**: Automatic extraction of security, bugfix, pattern, decision, style, and performance insights from reviews
+- **Engram integration**: Bidirectional bridge — export insights to Engram + consume historical context before reviews
+- **New commands**: `gga engram check|export|recent`
+
+### v2.7.0
 
 - ✅ **feat**: Timeout & progress feedback for AI provider calls (#35, based on PR #20 by @ramarivera)
   - Configurable `TIMEOUT` (default: 300s) with `GGA_TIMEOUT` env override

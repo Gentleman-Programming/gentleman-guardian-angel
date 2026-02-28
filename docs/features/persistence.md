@@ -136,3 +136,20 @@ GGA includes built-in maintenance functions (available programmatically):
 - **Integrity check**: runs `PRAGMA integrity_check` on the database
 
 The database is lightweight — thousands of reviews typically use < 10 MB.
+
+## Privacy Stripping
+
+All review data is automatically stripped of sensitive content before storage. See [Privacy](privacy.md) for details.
+
+## Structured Insights
+
+Reviews are automatically analyzed to extract structured insights (security issues, bugs, patterns, decisions, performance problems). These are stored in the `review_insights` table with FTS5 search capability.
+
+See the `review_insights` schema:
+- `type`: bugfix, security, pattern, decision, style, performance
+- `severity`: low, medium, high, critical (ordered by CASE expression)
+- FTS5 search via `gga search` or `db_search_insights()`
+
+## Engram Integration
+
+GGA optionally integrates with [Engram](https://github.com/Gentleman-Programming/engram) for persistent cross-session memory. See [Engram Integration](engram-integration.md) for details.
