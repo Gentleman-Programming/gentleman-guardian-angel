@@ -346,7 +346,8 @@ cmd_install() {
 
   # Parse arguments to determine hook type
   local hook_type="pre-commit"  # default
-  
+  local arg
+
   for arg in "$@"; do
     case "$arg" in
       --commit-msg)
@@ -1086,41 +1087,46 @@ cmd_run() {
 # Utility Functions
 # ============================================================================
 
-get_staged_files() {
-  local patterns="$1"
-  local excludes="$2"
+# Trim leading and trailing whitespace (pure bash, no subprocess)
+_trim() {
+  local var="$1"
+  var="${var#"${var%%[![:space:]]*}"}"  # trim leading
+  var="${var%"${var##*[![:space:]]}"}"  # trim trailing
+  printf '%s' "$var"
+}
 
-  # Get all staged files (added, copied, modified)
-  local staged
-  staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
+# Filter files by include/exclude patterns
+# Usage: _filter_files_by_patterns "file_list" "include_patterns" "exclude_patterns" [check_exists]
+_filter_files_by_patterns() {
+  local files="$1"
+  local file_patterns="$2"
+  local file_excludes="$3"
+  local check_exists="${4:-false}"
 
-  if [[ -z "$staged" ]]; then
-    return
-  fi
+  [[ -z "$files" ]] && return
 
-  # Convert comma-separated patterns to array
-  IFS=',' read -ra PATTERN_ARRAY <<< "$patterns"
-  IFS=',' read -ra EXCLUDE_ARRAY <<< "$excludes"
+  # Convert comma-separated patterns to arrays
+  local -a pattern_array exclude_array
+  IFS=',' read -ra pattern_array <<< "$file_patterns"
+  IFS=',' read -ra exclude_array <<< "$file_excludes"
 
-  # Filter files
-  echo "$staged" | while IFS= read -r file; do
+  echo "$files" | while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+
     local match=false
     local excluded=false
+    local pattern suffix
 
     # Check if file matches any include pattern
-    for pattern in "${PATTERN_ARRAY[@]}"; do
-      pattern=$(echo "$pattern" | xargs) # trim whitespace
-      # Convert glob pattern to regex-like suffix match
-      # *.tsx -> check if file ends with .tsx
+    for pattern in "${pattern_array[@]}"; do
+      pattern=$(_trim "$pattern")
       if [[ "$pattern" == \** ]]; then
-        # Pattern starts with *, so match suffix
-        local suffix="${pattern#\*}"
+        suffix="${pattern#\*}"
         if [[ "$file" == *"$suffix" ]]; then
           match=true
           break
         fi
       else
-        # Exact match or other pattern
         # shellcheck disable=SC2053
         if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
           match=true
@@ -1130,12 +1136,11 @@ get_staged_files() {
     done
 
     # Check if file matches any exclude pattern
-    if [[ "$match" == true && -n "$excludes" ]]; then
-      for pattern in "${EXCLUDE_ARRAY[@]}"; do
-        pattern=$(echo "$pattern" | xargs) # trim whitespace
-        # Convert glob pattern to regex-like suffix match
+    if [[ "$match" == true && -n "$file_excludes" ]]; then
+      for pattern in "${exclude_array[@]}"; do
+        pattern=$(_trim "$pattern")
         if [[ "$pattern" == \** ]]; then
-          local suffix="${pattern#\*}"
+          suffix="${pattern#\*}"
           if [[ "$file" == *"$suffix" ]]; then
             excluded=true
             break
@@ -1150,15 +1155,31 @@ get_staged_files() {
       done
     fi
 
+    # Output matching file
     if [[ "$match" == true && "$excluded" == false ]]; then
-      echo "$file"
+      if [[ "$check_exists" == true ]]; then
+        [[ -f "$file" ]] && echo "$file"
+      else
+        echo "$file"
+      fi
     fi
   done
 }
 
+get_staged_files() {
+  local file_patterns="$1"
+  local file_excludes="$2"
+
+  # Get all staged files (added, copied, modified)
+  local staged
+  staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
+
+  _filter_files_by_patterns "$staged" "$file_patterns" "$file_excludes" false
+}
+
 get_ci_files() {
-  local patterns="$1"
-  local excludes="$2"
+  local file_patterns="$1"
+  local file_excludes="$2"
   local source_commit="HEAD~1"
 
   if [[ -n ${GGA_CI_SOURCE_COMMIT:-} ]]; then
@@ -1168,64 +1189,9 @@ get_ci_files() {
   # Get files changed in the last commit (for CI environments)
   local changed
   changed=$(git diff --name-only --diff-filter=ACM "$source_commit"..HEAD 2>/dev/null)
-  if [[ -z "$changed" ]]; then
-    return
-  fi
 
-  # Convert comma-separated patterns to array
-  IFS=',' read -ra PATTERN_ARRAY <<< "$patterns"
-  IFS=',' read -ra EXCLUDE_ARRAY <<< "$excludes"
-
-  # Filter files (same logic as get_staged_files)
-  echo "$changed" | while IFS= read -r file; do
-    local match=false
-    local excluded=false
-
-    # Check if file matches any include pattern
-    for pattern in "${PATTERN_ARRAY[@]}"; do
-      pattern=$(echo "$pattern" | xargs) # trim whitespace
-      if [[ "$pattern" == \** ]]; then
-        local suffix="${pattern#\*}"
-        if [[ "$file" == *"$suffix" ]]; then
-          match=true
-          break
-        fi
-      else
-        # shellcheck disable=SC2053
-        if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
-          match=true
-          break
-        fi
-      fi
-    done
-
-    # Check if file matches any exclude pattern
-    if [[ "$match" == true && -n "$excludes" ]]; then
-      for pattern in "${EXCLUDE_ARRAY[@]}"; do
-        pattern=$(echo "$pattern" | xargs) # trim whitespace
-        if [[ "$pattern" == \** ]]; then
-          local suffix="${pattern#\*}"
-          if [[ "$file" == *"$suffix" ]]; then
-            excluded=true
-            break
-          fi
-        else
-          # shellcheck disable=SC2053
-          if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
-            excluded=true
-            break
-          fi
-        fi
-      done
-    fi
-
-    if [[ "$match" == true && "$excluded" == false ]]; then
-      # Only include if file still exists (wasn't deleted)
-      if [[ -f "$file" ]]; then
-        echo "$file"
-      fi
-    fi
-  done
+  # check_exists=true because in CI, files might have been deleted
+  _filter_files_by_patterns "$changed" "$file_patterns" "$file_excludes" true
 }
 
 build_prompt() {

@@ -18,7 +18,12 @@ Describe 'OpenCode Integration'
     ! command -v opencode &> /dev/null && return 0
     # Check if service is responding
     local test_result
-    test_result=$(opencode run "test" 2>&1) || return 0
+    # Use timeout to prevent hanging if service is unresponsive;
+    # skip entirely when timeout is not available (e.g., macOS without coreutils)
+    if ! command -v timeout &> /dev/null; then
+      return 0
+    fi
+    test_result=$(timeout 5s opencode run "test" 2>&1) || return 0
     [[ "$test_result" == *"Unable to connect"* ]] && return 0
     [[ "$test_result" == *"Error"* ]] && return 0
     return 1
