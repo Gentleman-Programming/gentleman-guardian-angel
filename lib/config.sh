@@ -26,11 +26,6 @@ load_env_config() {
     GGA_HISTORY_LIMIT="${GGA_HISTORY_LIMIT:-$DEFAULT_HISTORY_LIMIT}"
     GGA_SEARCH_LIMIT="${GGA_SEARCH_LIMIT:-$DEFAULT_SEARCH_LIMIT}"
 
-    # RAG settings (for future iterations)
-    GGA_RAG_ENABLED="${GGA_RAG_ENABLED:-true}"
-    GGA_RAG_CONTEXT_LIMIT="${GGA_RAG_CONTEXT_LIMIT:-5}"
-    GGA_RAG_MIN_SIMILARITY="${GGA_RAG_MIN_SIMILARITY:-0.5}"
-
     # Validate GGA_DB_PATH to prevent command injection
     # Reject paths with shell metacharacters: backticks, $(), ;, |, &, newlines
     if [[ "$GGA_DB_PATH" =~ [\`\$\;\|\&\'] || "$GGA_DB_PATH" =~ $'\n' ]]; then
@@ -49,9 +44,6 @@ load_env_config() {
     export GGA_MODEL
     export GGA_HISTORY_LIMIT
     export GGA_SEARCH_LIMIT
-    export GGA_RAG_ENABLED
-    export GGA_RAG_CONTEXT_LIMIT
-    export GGA_RAG_MIN_SIMILARITY
 }
 
 # Get a configuration value by key with optional default
@@ -109,6 +101,4 @@ show_config() {
     echo "  MODEL:             ${GGA_MODEL:-<not set>}"
     echo "  HISTORY_LIMIT:     $GGA_HISTORY_LIMIT"
     echo "  SEARCH_LIMIT:      $GGA_SEARCH_LIMIT"
-    echo "  RAG_ENABLED:       $GGA_RAG_ENABLED"
-    echo "  RAG_CONTEXT_LIMIT: $GGA_RAG_CONTEXT_LIMIT"
 }

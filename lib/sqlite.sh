@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS reviews (
     provider TEXT NOT NULL,
     model TEXT,
     duration_ms INTEGER,
-    embedding BLOB,
     UNIQUE(diff_hash)
 );
 
@@ -277,8 +276,7 @@ db_get_review() {
     'status', status,
     'provider', provider,
     'model', model,
-    'duration_ms', duration_ms,
-    'embedding', embedding
+    'duration_ms', duration_ms
 ))
 FROM reviews WHERE id = $review_id;"
     _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"

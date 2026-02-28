@@ -15,7 +15,6 @@ Describe 'config.sh'
       unset GGA_MODEL
       unset GGA_HISTORY_LIMIT
       unset GGA_SEARCH_LIMIT
-      unset GGA_RAG_ENABLED
       TEMP_DIR=$(mktemp -d)
     }
 
@@ -51,11 +50,6 @@ Describe 'config.sh'
       export GGA_HISTORY_LIMIT="100"
       When call load_env_config
       The variable GGA_HISTORY_LIMIT should eq "100"
-    End
-
-    It 'sets RAG enabled by default'
-      When call load_env_config
-      The variable GGA_RAG_ENABLED should eq "true"
     End
 
     It 'rejects DB path with backticks'
@@ -175,8 +169,6 @@ Describe 'config.sh'
       export GGA_DB_PATH="/test/path/gga.db"
       export GGA_HISTORY_LIMIT="25"
       export GGA_SEARCH_LIMIT="10"
-      export GGA_RAG_ENABLED="true"
-      export GGA_RAG_CONTEXT_LIMIT="3"
     }
 
     BeforeEach 'setup'
