@@ -267,9 +267,9 @@ get_cache_stats() {
   
   while IFS= read -r file; do
     if [[ -n "$file" ]]; then
-      ((total++))
+      total=$((total + 1))
       if is_file_cached "$file"; then
-        ((cached++))
+        cached=$((cached + 1))
       fi
     fi
   done <<< "$files"
