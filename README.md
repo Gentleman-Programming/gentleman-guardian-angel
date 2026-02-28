@@ -1030,6 +1030,7 @@ That's it. When you commit via the Source Control panel (`Cmd+Enter` / `Ctrl+Ent
 - **Output visibility**: Hook output appears in the "Git" output channel. Open it via View → Output → select "Git" from the dropdown
 - **Bypass when needed**: Use `--no-verify` from the terminal: `git commit --no-verify -m "wip"`
 - **Antigravity users**: Antigravity includes Gemini built-in. Set `PROVIDER="gemini"` in your `.gga` config and ensure the `gemini` CLI is in your PATH. GGA works through git hooks — no IDE-specific configuration needed.
+- **Windows + VS Code**: VS Code may launch Git from a different shell profile than your terminal. Confirm `gga` is resolvable from inside VS Code with `where gga` (PowerShell/CMD) or `which gga` (Git Bash).
 
 ### CI/CD Integration
 
@@ -1178,12 +1179,14 @@ If GGA doesn't trigger when committing from VS Code's Source Control UI:
 
 1. Ensure the hook is installed: `ls -la .git/hooks/pre-commit`
 2. Check that `gga` is in your PATH — VS Code may use a different shell profile
+   - On Windows, check both PowerShell (`where gga`) and Git Bash (`which gga`) inside VS Code.
 3. Try adding the full path in the hook:
    ```bash
    # .git/hooks/pre-commit
    /opt/homebrew/bin/gga run || exit 1
    ```
-4. Check the Git output channel (View → Output → Git) for error messages
+4. On Windows, if PATH still differs, hardcode the executable path in the hook (for example `C:/Users/<you>/.local/bin/gga.exe run || exit 1`).
+5. Check the Git output channel (View → Output → Git) for error messages
 
 ### LM Studio connection issues
 
