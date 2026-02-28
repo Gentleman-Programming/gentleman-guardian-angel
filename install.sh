@@ -68,6 +68,7 @@ for lib_file in "$SCRIPT_DIR/lib/"*.sh; do
     cp "$lib_file" "$LIB_INSTALL_DIR/"
   fi
 done
+cp "$SOURCE_DIR/lib/engram_bridge.sh" "$INSTALL_DIR/lib/engram_bridge.sh"
 
 # Update LIB_DIR path in installed script
 if [[ "$(uname)" == "Darwin" ]]; then

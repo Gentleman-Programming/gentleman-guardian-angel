@@ -51,4 +51,21 @@ save_review_to_db() {
   db_save_review "$project_path" "$project_name" "$git_branch" "$git_commit" \
     "$files_list" "$files_count" "$diff_content" "$diff_hash" \
     "$result" "$review_status" "$provider" "" "$duration_ms" 2>/dev/null || true
+
+  # Extract structured insights from review result
+  local review_id
+  review_id=$(sqlite3 "$GGA_DB_PATH" \
+    "SELECT id FROM reviews WHERE diff_hash = '$diff_hash' LIMIT 1;" 2>/dev/null | tr -d '\r') || true
+  if [[ -n "$review_id" ]]; then
+    extract_review_insights "$review_id" "$result" "$files_to_review" 2>/dev/null || true
+
+    # Send insights to Engram if enabled
+    if [[ "${GGA_ENGRAM_ENABLED:-false}" == "true" ]]; then
+      engram_save_observation \
+        "Review $review_status: $files_count file(s) in $project_name" \
+        "review" \
+        "Status: $review_status | Files: $files_list | Provider: $provider" \
+        "$project_name" 2>/dev/null || true
+    fi
+  fi
 }

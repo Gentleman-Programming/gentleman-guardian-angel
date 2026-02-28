@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.7.0"
+VERSION="2.8.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -26,6 +26,8 @@ source "$LIB_DIR/config.sh"
 source "$LIB_DIR/sqlite.sh"
 # shellcheck source=lib/persistence.sh
 source "$LIB_DIR/persistence.sh"
+# shellcheck source=lib/engram_bridge.sh
+source "$LIB_DIR/engram_bridge.sh"
 
 # ============================================================================
 # Signal Handling - Graceful cleanup on interruption
@@ -91,6 +93,9 @@ print_help() {
   echo "  cache clear       Clear cache for current project"
   echo "  cache clear-all   Clear all cached data"
   echo "  cache status      Show cache status"
+  echo "  engram check      Check Engram bridge status"
+  echo "  engram export <id> Export review insights to Engram"
+  echo "  engram recent [N]  Export insights from last N days"
   echo "  help              Show this help message"
   echo "  version           Show version"
   echo ""
@@ -131,10 +136,15 @@ print_help() {
   echo "  gga history --limit 10 # Show last 10 reviews"
   echo "  gga search \"sql\"       # Search for reviews mentioning SQL"
   echo "  gga cache status       # Show cache info"
+  echo "  gga engram check       # Check Engram connection"
+  echo "  gga engram export 42   # Export review #42 insights"
+  echo "  gga engram recent 7    # Export last 7 days insights"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
   echo "  GGA_PROVIDER      Override provider from config"
   echo "  GGA_TIMEOUT       Override timeout from config (seconds)"
+  echo "  GGA_ENGRAM_ENABLED Enable Engram bridge (default: false)"
+  echo "  GGA_ENGRAM_HOST   Engram server URL (default: http://localhost:7437)"
   echo ""
 }
 
@@ -762,6 +772,48 @@ cmd_search() {
   echo ""
 }
 
+cmd_engram() {
+  print_banner
+  load_env_config
+
+  local subcommand="${1:-check}"
+  shift || true
+
+  case "$subcommand" in
+    check)
+      engram_check
+      ;;
+    export)
+      local review_id="${1:-}"
+      if [[ -z "$review_id" ]]; then
+        log_error "Usage: gga engram export <review_id>"
+        exit 1
+      fi
+      local count
+      count=$(engram_export_review "$review_id" "$GGA_ENGRAM_OUTPUT_DIR")
+      log_success "Exported $count insights from review #$review_id"
+      ;;
+    recent)
+      local days="${1:-7}"
+      engram_export_recent "$days" "$GGA_ENGRAM_OUTPUT_DIR"
+      ;;
+    *)
+      log_error "Unknown engram command: $subcommand"
+      echo ""
+      echo "Usage: gga engram <command>"
+      echo ""
+      echo "Commands:"
+      echo "  check          Check Engram bridge status"
+      echo "  export <id>    Export review insights to Engram format"
+      echo "  recent [days]  Export insights from last N days (default: 7)"
+      echo ""
+      exit 1
+      ;;
+  esac
+  echo ""
+}
+
+
 cmd_run() {
   local use_cache=true
   local ci_mode=false
@@ -986,6 +1038,23 @@ cmd_run() {
       use_staged="false"
     fi
     PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
+  fi
+
+  # Inject Engram historical context if enabled
+  if [[ "${GGA_ENGRAM_ENABLED:-false}" == "true" ]]; then
+    local project_name_ctx
+    project_name_ctx=$(basename "$(pwd)")
+    local engram_context
+    engram_context=$(engram_get_review_context "$files_to_review" "$project_name_ctx" 2>/dev/null || true)
+    if [[ -n "$engram_context" ]]; then
+      local context_lines
+      context_lines=$(echo "$engram_context" | wc -l | xargs)
+      log_info "Engram: injecting $context_lines relevant memories"
+      PROMPT+=$'\n\n=== HISTORICAL CONTEXT (from past reviews) ===\n'
+      PROMPT+="Relevant observations from previous reviews of this project:"$'\n'
+      PROMPT+="$engram_context"
+      PROMPT+=$'\n=== END HISTORICAL CONTEXT ===\n'
+    fi
   fi
 
   # Execute review with timeout and progress feedback
@@ -1299,6 +1368,10 @@ main() {
     search)
       shift
       cmd_search "$@"
+      ;;
+    engram)
+      shift
+      cmd_engram "$@"
       ;;
     version|--version|-v)
       print_version
