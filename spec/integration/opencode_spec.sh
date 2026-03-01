@@ -16,13 +16,9 @@ Describe 'OpenCode Integration'
   skip_if_no_opencode() {
     # Check if command exists
     ! command -v opencode &> /dev/null && return 0
-    # Check if service is responding (quick test with timeout to prevent hangs)
+    # Check if service is responding
     local test_result
-    if command -v timeout &> /dev/null; then
-      test_result=$(timeout 5s opencode --prompt "test" 2>&1) || return 0
-    else
-      test_result=$(opencode --prompt "test" 2>&1) || return 0
-    fi
+    test_result=$(opencode run "test" 2>&1) || return 0
     [[ "$test_result" == *"Unable to connect"* ]] && return 0
     [[ "$test_result" == *"Error"* ]] && return 0
     return 1

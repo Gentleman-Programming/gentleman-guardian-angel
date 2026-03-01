@@ -33,7 +33,7 @@ save_review_to_db() {
   # Build files list and count
   local files_list files_count
   files_list=$(echo "$files_to_review" | tr '\n' ',' | sed 's/,$//')
-  files_count=$(echo "$files_to_review" | grep -c . || echo "0")
+  files_count=$(echo "$files_to_review" | awk 'NF{c++} END{print c+0}')
 
   # Generate diff hash for deduplication
   local diff_content diff_hash
