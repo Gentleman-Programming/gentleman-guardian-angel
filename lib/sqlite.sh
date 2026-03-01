@@ -537,14 +537,14 @@ db_search_insights() {
 
     [[ -z "$query" ]] && { echo "[]"; return 0; }
 
-    local sep='§'
+    local sep=$'\x1f'
     local rows
     if ! rows=$(sqlite3 -separator "$sep" "$db_path" <<< "SELECT
     ri.id,
     ri.review_id,
     ri.type,
     ri.severity,
-    snippet(insights_fts, 0, '>>>', '<<<', '...', 32),
+    replace(snippet(insights_fts, 0, '>>>', '<<<', '...', 32), char(31), ''),  -- col 0 = what
     bm25(insights_fts)
 FROM insights_fts
 JOIN review_insights ri ON insights_fts.rowid = ri.id
@@ -618,6 +618,9 @@ extract_review_insights() {
     local result_text="$2"
     local files="${3:-}"
 
+    # Use first file from comma-separated list as default file_path
+    local file_path="${files%%,*}"
+
     [[ "$review_id" -eq 0 ]] && return 1
     [[ -z "$result_text" ]] && return 0
 
@@ -638,7 +641,7 @@ extract_review_insights() {
         local what
         what=$(echo "$result_text" | grep -iE '(security|vulnerab|injection|xss|csrf)' | head -1 | sed 's/^[[:space:]]*//')
         [[ -n "$what" ]] && {
-            db_save_insight "$review_id" "security" "$what" "" "" "" "high" 2>/dev/null
+            db_save_insight "$review_id" "security" "$what" "" "" "$file_path" "high" 2>/dev/null
             count=$((count + 1))
         }
     fi
@@ -648,7 +651,7 @@ extract_review_insights() {
         local what
         what=$(echo "$result_text" | grep -iE '(bug|fix|error|crash|null|undefined|exception)' | head -1 | sed 's/^[[:space:]]*//')
         [[ -n "$what" ]] && {
-            db_save_insight "$review_id" "bugfix" "$what" "" "" "" "medium" 2>/dev/null
+            db_save_insight "$review_id" "bugfix" "$what" "" "" "$file_path" "medium" 2>/dev/null
             count=$((count + 1))
         }
     fi
@@ -658,7 +661,7 @@ extract_review_insights() {
         local what
         what=$(echo "$result_text" | grep -iE '(performance|slow|optimize|n\+1|memory|latency)' | head -1 | sed 's/^[[:space:]]*//')
         [[ -n "$what" ]] && {
-            db_save_insight "$review_id" "performance" "$what" "" "" "" "medium" 2>/dev/null
+            db_save_insight "$review_id" "performance" "$what" "" "" "$file_path" "medium" 2>/dev/null
             count=$((count + 1))
         }
     fi
@@ -668,7 +671,7 @@ extract_review_insights() {
         local what
         what=$(echo "$result_text" | grep -iE '(pattern|convention|best.?practice|anti.?pattern|code.?smell)' | head -1 | sed 's/^[[:space:]]*//')
         [[ -n "$what" ]] && {
-            db_save_insight "$review_id" "pattern" "$what" "" "" "" "low" 2>/dev/null
+            db_save_insight "$review_id" "pattern" "$what" "" "" "$file_path" "low" 2>/dev/null
             count=$((count + 1))
         }
     fi

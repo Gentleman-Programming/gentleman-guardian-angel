@@ -227,7 +227,10 @@ engram_export_recent() {
         [[ -z "$rid" ]] && continue
         local count
         count=$(engram_export_review "$rid" "$output_dir")
-        total=$((total + count))
+        # Only update total if engram_export_review returned a numeric count
+        if [[ "$count" =~ ^[0-9]+$ ]]; then
+            total=$((total + count))
+        fi
     done <<< "$review_ids"
 
     echo "Exported $total insights from last $days days"

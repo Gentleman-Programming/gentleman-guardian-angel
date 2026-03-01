@@ -66,7 +66,7 @@ gga engram recent 7    # Export insights from last 7 days
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GGA_ENGRAM_ENABLED` | `false` | Enable/disable Engram bridge |
+| `GGA_ENGRAM_ENABLED` | `true` | Enable/disable Engram bridge |
 | `GGA_ENGRAM_HOST` | `http://localhost:7437` | Engram HTTP API URL |
 | `GGA_ENGRAM_TIMEOUT` | `3` | HTTP timeout in seconds |
 | `GGA_ENGRAM_CONTEXT_LIMIT` | `5` | Max memories to inject |
