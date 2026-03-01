@@ -525,7 +525,12 @@ FROM (
         id ASC
     LIMIT $limit
 );"
-    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
+    local result
+    if ! result=$(sqlite3 "$db_path" <<< "$sql"); then
+        echo "[]"
+        return 1
+    fi
+    _json_array_fix "$result"
 }
 
 # Full-text search across insights using FTS5 + BM25 ranking.
@@ -607,7 +612,12 @@ FROM (
     ORDER BY ri.created_at DESC
     LIMIT $limit
 ) sub;"
-    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
+    local result
+    if ! result=$(sqlite3 "$db_path" <<< "$sql"); then
+        echo "[]"
+        return 1
+    fi
+    _json_array_fix "$result"
 }
 
 # Extract structured insights from a review result text.

@@ -137,14 +137,16 @@ engram_format_insight() {
             }'
     else
         # Fallback: manual JSON with _json_escape() from sqlite.sh
-        local safe_what safe_file safe_project
+        local safe_what safe_file safe_project safe_type safe_severity
         safe_what=$(_json_escape "$what")
         safe_file=$(_json_escape "$file_path")
         safe_project=$(_json_escape "$project")
+        safe_type=$(_json_escape "$type")
+        safe_severity=$(_json_escape "$severity")
 
         printf '{"category":"%s","content":"%s","strength":%s,"source":"gga","metadata":{"gga_type":"%s","severity":"%s","file":"%s","project":"%s"},"timestamp":"%s"}' \
             "$engram_category" "$safe_what" "$engram_strength" \
-            "$type" "$severity" "$safe_file" "$safe_project" "$timestamp"
+            "$safe_type" "$safe_severity" "$safe_file" "$safe_project" "$timestamp"
     fi
 }
 
@@ -173,7 +175,10 @@ engram_export_review() {
 
     # Get insights for this review
     local insights
-    insights=$(sqlite3 -separator '|' "$db_path" \
+    # Use unit separator (0x1F) instead of '|' to prevent parsing
+    # errors when 'what' field contains pipe characters
+    local sep=$'\x1F'
+    insights=$(sqlite3 -separator "$sep" "$db_path" \
         "SELECT type, what, file_path, severity FROM review_insights
          WHERE review_id = $review_id;" 2>/dev/null | tr -d '\r')
 
@@ -182,7 +187,7 @@ engram_export_review() {
     local count=0
     local all_json="["
 
-    while IFS='|' read -r itype iwhat ifile isev; do
+    while IFS="$sep" read -r itype iwhat ifile isev; do
         [[ -z "$iwhat" ]] && continue
 
         local json
@@ -417,7 +422,7 @@ engram_check() {
 
     if engram_is_available; then
         local insight_count="0"
-        if [[ -f "$db_path" ]]; then
+        if [[ -f "$db_path" ]] && command -v sqlite3 &>/dev/null; then
             insight_count=$(sqlite3 "$db_path" \
                 "SELECT COUNT(*) FROM review_insights;" 2>/dev/null | tr -d '\r')
             insight_count="${insight_count:-0}"
