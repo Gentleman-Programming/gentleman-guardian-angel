@@ -177,7 +177,6 @@ Describe 'Engram Bridge'
   Describe 'engram_check()'
     It 'reports disabled when ENGRAM_ENABLED is false'
       export GGA_ENGRAM_ENABLED="false"
-      ENGRAM_ENABLED="false"
       When call engram_check
       The status should be failure
       The output should include "disabled"
@@ -187,7 +186,6 @@ Describe 'Engram Bridge'
   Describe 'engram_is_available()'
     It 'returns false when disabled'
       export GGA_ENGRAM_ENABLED="false"
-      ENGRAM_ENABLED="false"
       When call engram_is_available
       The status should be failure
     End
@@ -196,14 +194,12 @@ Describe 'Engram Bridge'
   Describe 'engram_save_observation()'
     It 'returns immediately when disabled'
       export GGA_ENGRAM_ENABLED="false"
-      ENGRAM_ENABLED="false"
       When call engram_save_observation "test" "review" "content" "project"
       The status should be success
     End
 
     It 'returns immediately with empty title'
       export GGA_ENGRAM_ENABLED="true"
-      ENGRAM_ENABLED="true"
       When call engram_save_observation "" "review" "content" "project"
       The status should be success
     End
@@ -212,14 +208,12 @@ Describe 'Engram Bridge'
   Describe 'engram_search()'
     It 'returns immediately when disabled'
       export GGA_ENGRAM_ENABLED="false"
-      ENGRAM_ENABLED="false"
       When call engram_search "test query" "project"
       The status should be success
     End
 
     It 'returns immediately with empty query'
       export GGA_ENGRAM_ENABLED="true"
-      ENGRAM_ENABLED="true"
       When call engram_search "" "project"
       The status should be success
     End
@@ -228,14 +222,12 @@ Describe 'Engram Bridge'
   Describe 'engram_get_review_context()'
     It 'returns immediately when disabled'
       export GGA_ENGRAM_ENABLED="false"
-      ENGRAM_ENABLED="false"
       When call engram_get_review_context "file.ts" "project"
       The status should be success
     End
 
     It 'returns immediately with empty files'
       export GGA_ENGRAM_ENABLED="true"
-      ENGRAM_ENABLED="true"
       When call engram_get_review_context "" "project"
       The status should be success
     End

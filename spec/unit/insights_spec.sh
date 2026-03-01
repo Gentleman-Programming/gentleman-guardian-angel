@@ -231,4 +231,68 @@ Describe 'Structured Insights'
       The status should be failure
     End
   End
+
+  Describe 'db_get_insight_summaries()'
+    Skip if "sqlite3 not installed" no_sqlite3
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      export GGA_DB_PATH="$TEMP_DIR/test_$$.db"
+      load_env_config
+      db_init > /dev/null 2>&1
+      # Insert two reviews for different projects
+      sqlite3 "$GGA_DB_PATH" "INSERT INTO reviews (project_path, project_name, git_branch, git_commit, files, files_count, diff_content, diff_hash, result, status, provider, duration_ms) VALUES ('/test', 'project-alpha', 'main', 'aaa', 'f.ts', 1, 'diff', 'sumhash1', 'result', 'PASSED', 'claude', 100);"
+      sqlite3 "$GGA_DB_PATH" "INSERT INTO reviews (project_path, project_name, git_branch, git_commit, files, files_count, diff_content, diff_hash, result, status, provider, duration_ms) VALUES ('/test2', 'project-beta', 'main', 'bbb', 'g.ts', 1, 'diff2', 'sumhash2', 'result2', 'FAILED', 'claude', 200);"
+      # Insert insights across both projects
+      db_save_insight 1 "security" "SQL injection risk" "Sanitize inputs" "auth.ts" "Use parameterized queries" "critical"
+      db_save_insight 1 "bugfix" "Null pointer fix" "Missing null check" "api.ts" "Always check nulls" "medium"
+      db_save_insight 2 "performance" "Slow query" "Missing index" "db.ts" "Add index" "high"
+    }
+
+    cleanup() {
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'returns summaries as JSON array'
+      result=$(db_get_insight_summaries)
+      The value "$result" should start with "["
+      The value "$result" should end with "]"
+    End
+
+    It 'includes correct fields'
+      result=$(db_get_insight_summaries)
+      The value "$result" should include '"type"'
+      The value "$result" should include '"what"'
+      The value "$result" should include '"severity"'
+      The value "$result" should include '"file_path"'
+      The value "$result" should include '"project"'
+      The value "$result" should include '"date"'
+    End
+
+    It 'filters by project name'
+      result=$(db_get_insight_summaries "project-alpha")
+      The value "$result" should include "project-alpha"
+      The value "$result" should not include "project-beta"
+    End
+
+    It 'respects limit parameter'
+      result=$(db_get_insight_summaries "" 1)
+      count=$(echo "$result" | grep -o '"type"' | wc -l | xargs)
+      The value "$count" should eq "1"
+    End
+
+    It 'returns empty array for empty database'
+      # Use a fresh database with no insights
+      local empty_dir
+      empty_dir=$(mktemp -d)
+      export GGA_DB_PATH="$empty_dir/empty_$$.db"
+      db_init > /dev/null 2>&1
+      When call db_get_insight_summaries
+      The output should eq "[]"
+      rm -rf "$empty_dir"
+    End
+  End
 End

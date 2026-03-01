@@ -132,6 +132,13 @@ CREATE TRIGGER IF NOT EXISTS insights_ad AFTER DELETE ON review_insights BEGIN
     INSERT INTO insights_fts(insights_fts, rowid, what, why, learned, file_path, type)
     VALUES ('delete', old.id, old.what, old.why, old.learned, old.file_path, old.type);
 END;
+
+CREATE TRIGGER IF NOT EXISTS insights_au AFTER UPDATE ON review_insights BEGIN
+    INSERT INTO insights_fts(insights_fts, rowid, what, why, learned, file_path, type)
+    VALUES ('delete', old.id, old.what, old.why, old.learned, old.file_path, old.type);
+    INSERT INTO insights_fts(rowid, what, why, learned, file_path, type)
+    VALUES (new.id, new.what, new.why, new.learned, new.file_path, new.type);
+END;
 SQL
     then
         echo "Error: failed to initialize database at $db_path" >&2
@@ -579,23 +586,27 @@ db_get_insight_summaries() {
     [[ -n "$project" ]] && where_clause="WHERE r.project_name = '$project'"
 
     local sql="SELECT json_group_array(json_object(
-    'type', ri.type,
-    'what', ri.what,
-    'severity', ri.severity,
-    'file_path', ri.file_path,
-    'project', r.project_name,
-    'date', ri.created_at
+    'type', sub.type,
+    'what', sub.what,
+    'severity', sub.severity,
+    'file_path', sub.file_path,
+    'project', sub.project_name,
+    'date', sub.created_at
 ))
 FROM (
-    SELECT ri.*, r.project_name
+    SELECT
+        ri.type,
+        ri.what,
+        ri.severity,
+        ri.file_path,
+        r.project_name,
+        ri.created_at
     FROM review_insights ri
     JOIN reviews r ON ri.review_id = r.id
     $where_clause
     ORDER BY ri.created_at DESC
     LIMIT $limit
-) sub
-JOIN review_insights ri ON ri.id = sub.id
-JOIN reviews r ON ri.review_id = r.id;"
+) sub;"
     _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
 }
 

@@ -10,18 +10,14 @@
 # Engram (github.com/Gentleman-Programming/engram) exposes an HTTP API.
 # This bridge communicates via curl to localhost:7437 (configurable).
 #
-# All operations are opt-in (GGA_ENGRAM_ENABLED=false by default) and
+# All operations are opt-in (GGA_ENGRAM_ENABLED=true by default) and
 # degrade gracefully — if Engram is not running, GGA works normally.
 #
 # Requires: curl (for HTTP), jq (recommended for JSON encoding)
 # ============================================================================
 
-# Configuration (loaded from env via config.sh)
-ENGRAM_ENABLED="${GGA_ENGRAM_ENABLED:-false}"
-ENGRAM_HOST="${GGA_ENGRAM_HOST:-http://localhost:7437}"
-ENGRAM_OUTPUT_DIR="${GGA_ENGRAM_OUTPUT_DIR:-}"
-ENGRAM_TIMEOUT="${GGA_ENGRAM_TIMEOUT:-3}"
-ENGRAM_CONTEXT_LIMIT="${GGA_ENGRAM_CONTEXT_LIMIT:-5}"
+# Configuration is read dynamically from GGA_ENGRAM_* variables (set by
+# load_env_config in config.sh) so that runtime changes are honored.
 
 # ============================================================================
 # Type Mapping
@@ -152,7 +148,7 @@ engram_export_review() {
         return 1
     fi
 
-    local output_dir="${2:-$ENGRAM_OUTPUT_DIR}"
+    local output_dir="${2:-${GGA_ENGRAM_OUTPUT_DIR:-}}"
 
     [[ ! -f "$db_path" ]] && { echo "Error: database not found" >&2; return 1; }
 
@@ -207,7 +203,7 @@ engram_export_recent() {
     local days
     days=$(_sql_validate_int "${1:-7}" 7)
 
-    local output_dir="${2:-$ENGRAM_OUTPUT_DIR}"
+    local output_dir="${2:-${GGA_ENGRAM_OUTPUT_DIR:-}}"
 
     [[ ! -f "$db_path" ]] && {
         echo "Error: database not found" >&2
@@ -250,9 +246,12 @@ engram_save_observation() {
     local content="$3"
     local project="${4:-}"
 
-    [[ "$ENGRAM_ENABLED" != "true" ]] && return 0
+    [[ "${GGA_ENGRAM_ENABLED:-true}" != "true" ]] && return 0
     [[ -z "$title" || -z "$content" ]] && return 0
     command -v curl &>/dev/null || return 0
+
+    local engram_host="${GGA_ENGRAM_HOST:-http://localhost:7437}"
+    local engram_timeout="${GGA_ENGRAM_TIMEOUT:-3}"
 
     local json
     if command -v jq &>/dev/null; then
@@ -271,8 +270,8 @@ engram_save_observation() {
         json="{\"title\":\"$safe_title\",\"type\":\"$type\",\"content\":\"$safe_content\",\"project\":\"$safe_project\",\"source\":\"gga\"}"
     fi
 
-    curl -s --connect-timeout "$ENGRAM_TIMEOUT" --max-time "$((ENGRAM_TIMEOUT * 2))" \
-        -X POST "$ENGRAM_HOST/api/save" \
+    curl -s --connect-timeout "$engram_timeout" --max-time "$((engram_timeout * 2))" \
+        -X POST "$engram_host/api/save" \
         -H "Content-Type: application/json" \
         -d "$json" \
         &>/dev/null || true
@@ -285,11 +284,14 @@ engram_save_observation() {
 # Check if the Engram server is reachable.
 # Usage: if engram_is_available; then ...; fi
 engram_is_available() {
-    [[ "$ENGRAM_ENABLED" != "true" ]] && return 1
+    [[ "${GGA_ENGRAM_ENABLED:-true}" != "true" ]] && return 1
     command -v curl &>/dev/null || return 1
 
-    curl -s --connect-timeout "$ENGRAM_TIMEOUT" --max-time "$ENGRAM_TIMEOUT" \
-        "$ENGRAM_HOST/api/stats" &>/dev/null
+    local engram_host="${GGA_ENGRAM_HOST:-http://localhost:7437}"
+    local engram_timeout="${GGA_ENGRAM_TIMEOUT:-3}"
+
+    curl -s --connect-timeout "$engram_timeout" --max-time "$engram_timeout" \
+        "$engram_host/api/stats" &>/dev/null
 }
 
 # Search Engram memory for relevant observations.
@@ -298,15 +300,19 @@ engram_search() {
     local query="$1"
     local project="${2:-}"
 
-    [[ "$ENGRAM_ENABLED" != "true" ]] && return 0
+    [[ "${GGA_ENGRAM_ENABLED:-true}" != "true" ]] && return 0
     [[ -z "$query" ]] && return 0
     command -v curl &>/dev/null || return 0
 
-    local url="$ENGRAM_HOST/api/search?q=$(_urlencode "$query")&limit=$ENGRAM_CONTEXT_LIMIT"
+    local engram_host="${GGA_ENGRAM_HOST:-http://localhost:7437}"
+    local engram_timeout="${GGA_ENGRAM_TIMEOUT:-3}"
+    local engram_context_limit="${GGA_ENGRAM_CONTEXT_LIMIT:-5}"
+
+    local url="$engram_host/api/search?q=$(_urlencode "$query")&limit=$engram_context_limit"
     [[ -n "$project" ]] && url+="&project=$(_urlencode "$project")"
 
     local results
-    results=$(curl -s --connect-timeout "$ENGRAM_TIMEOUT" --max-time "$((ENGRAM_TIMEOUT * 2))" \
+    results=$(curl -s --connect-timeout "$engram_timeout" --max-time "$((engram_timeout * 2))" \
         "$url" 2>/dev/null) || return 0
 
     [[ -z "$results" || "$results" == "null" || "$results" == "[]" ]] && return 0
@@ -327,7 +333,7 @@ engram_get_review_context() {
     local files="$1"
     local project="$2"
 
-    [[ "$ENGRAM_ENABLED" != "true" ]] && return 0
+    [[ "${GGA_ENGRAM_ENABLED:-true}" != "true" ]] && return 0
     [[ -z "$files" ]] && return 0
     command -v curl &>/dev/null || return 0
     command -v jq &>/dev/null || return 0
@@ -369,7 +375,10 @@ engram_get_review_context() {
 # Check Engram bridge status and report.
 # Usage: engram_check
 engram_check() {
-    if [[ "$ENGRAM_ENABLED" != "true" ]]; then
+    local engram_enabled="${GGA_ENGRAM_ENABLED:-true}"
+    local engram_host="${GGA_ENGRAM_HOST:-http://localhost:7437}"
+
+    if [[ "$engram_enabled" != "true" ]]; then
         echo "Engram bridge disabled (GGA_ENGRAM_ENABLED=false)"
         return 1
     fi
@@ -388,10 +397,10 @@ engram_check() {
                 "SELECT COUNT(*) FROM review_insights;" 2>/dev/null | tr -d '\r')
             insight_count="${insight_count:-0}"
         fi
-        echo "Engram bridge ready at $ENGRAM_HOST (${insight_count} local insights available)"
+        echo "Engram bridge ready at $engram_host (${insight_count} local insights available)"
         return 0
     else
-        echo "Engram server not reachable at $ENGRAM_HOST"
+        echo "Engram server not reachable at $engram_host"
         echo "Start with: engram serve"
         return 1
     fi
