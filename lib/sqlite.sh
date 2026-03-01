@@ -27,10 +27,14 @@ _strip_private() {
         -e 's/([Bb][Ee][Aa][Rr][Ee][Rr]|[Tt][Oo][Kk][Ee][Nn]) [a-zA-Z0-9._-]{20,}/\1 [REDACTED]/g' \
         -e 's/([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Aa][Pp][Ii][Kk][Ee][Yy]|[Aa][Pp][Ii]_[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]_[Kk][Ee][Yy])=[^ "'\'']+/\1=[REDACTED]/g' \
     | awk '
-        BEGIN { in_key = 0 }
+        BEGIN { in_key = 0; in_private = 0 }
         /-----BEGIN .*PRIVATE KEY-----/ { print "[REDACTED_KEY]"; in_key = 1; next }
         in_key && /-----END .*PRIVATE KEY-----/ { in_key = 0; next }
         in_key { next }
+        /<private>/ && /<\/private>/ { gsub(/<private>[^<]*<\/private>/, "[REDACTED]"); print; next }
+        /<private>/ { printf "[REDACTED]"; in_private = 1; next }
+        in_private && /<\/private>/ { in_private = 0; next }
+        in_private { next }
         { print }
     '
 }
