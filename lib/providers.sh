@@ -225,9 +225,9 @@ execute_claude() {
 
 execute_gemini() {
   local prompt="$1"
-  
+
   if ! is_gemini_authenticated; then
-    echo -e "${RED}❌ Gemini CLI is not authenticated${NC}" >&2
+    echo -e "${RED}Gemini CLI is not authenticated${NC}" >&2
     echo ""
     echo "Please log in to Gemini CLI first:"
     echo "  gemini login"
@@ -235,9 +235,18 @@ execute_gemini() {
     echo "Or visit: https://gemini.google.com"
     return 1
   fi
-  
-  gemini -p "$prompt" 2>&1
-  return $?
+
+  # Gemini CLI in headless mode
+  # Using stdin to pass prompt (avoids ARG_MAX limits for large prompts)
+  # --yolo flag auto-approves all tool calls — only in CI/non-interactive mode
+  # See: https://geminicli.com/docs/cli/headless/
+  local -a gemini_flags=()
+  if [[ "${CI:-}" == "true" || "${GGA_NONINTERACTIVE:-}" == "true" ]]; then
+    gemini_flags=(--yolo)
+  fi
+
+  printf '%s' "$prompt" | gemini "${gemini_flags[@]}" 2>&1
+  return "${PIPESTATUS[1]}"
 }
 
 is_gemini_authenticated() {
@@ -796,7 +805,12 @@ execute_provider_with_timeout() {
       execute_with_timeout "$timeout" "Claude" bash -c "printf '%s' \"\$1\" | claude --print 2>&1" -- "$prompt"
       ;;
     gemini)
-      execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
+      # Use stdin for prompt (matches execute_gemini) with conditional --yolo
+      if [[ "${CI:-}" == "true" || "${GGA_NONINTERACTIVE:-}" == "true" ]]; then
+        execute_with_timeout "$timeout" "Gemini" bash -c "printf '%s' \"\$1\" | gemini --yolo 2>&1" -- "$prompt"
+      else
+        execute_with_timeout "$timeout" "Gemini" bash -c "printf '%s' \"\$1\" | gemini 2>&1" -- "$prompt"
+      fi
       ;;
     codex)
       execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
