@@ -240,12 +240,12 @@ execute_gemini() {
   # Using stdin to pass prompt (avoids ARG_MAX limits for large prompts)
   # --yolo flag auto-approves all tool calls — only in CI/non-interactive mode
   # See: https://geminicli.com/docs/cli/headless/
-  local gemini_flags=""
+  local -a gemini_flags=()
   if [[ "${CI:-}" == "true" || "${GGA_NONINTERACTIVE:-}" == "true" ]]; then
-    gemini_flags="--yolo"
+    gemini_flags=(--yolo)
   fi
 
-  printf '%s' "$prompt" | gemini $gemini_flags 2>&1
+  printf '%s' "$prompt" | gemini "${gemini_flags[@]}" 2>&1
   return "${PIPESTATUS[1]}"
 }
 
@@ -806,11 +806,11 @@ execute_provider_with_timeout() {
       ;;
     gemini)
       # Use stdin for prompt (matches execute_gemini) with conditional --yolo
-      local gemini_timeout_flags=""
       if [[ "${CI:-}" == "true" || "${GGA_NONINTERACTIVE:-}" == "true" ]]; then
-        gemini_timeout_flags="--yolo"
+        execute_with_timeout "$timeout" "Gemini" bash -c "printf '%s' \"\$1\" | gemini --yolo 2>&1" -- "$prompt"
+      else
+        execute_with_timeout "$timeout" "Gemini" bash -c "printf '%s' \"\$1\" | gemini 2>&1" -- "$prompt"
       fi
-      execute_with_timeout "$timeout" "Gemini" bash -c "printf '%s' \"\$1\" | gemini $gemini_timeout_flags 2>&1" -- "$prompt"
       ;;
     codex)
       execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
