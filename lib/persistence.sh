@@ -43,7 +43,7 @@ save_review_to_db() {
   else
     # Empty diff: generate unique hash to avoid collision (all empty diffs
     # would otherwise share the same hash, causing silent upsert overwrites)
-    diff_hash=$(echo "empty-${project_path}-${git_branch}-${git_commit}-$(date +%s%N)-$$" \
+    diff_hash=$(echo "empty-${project_path}-${git_branch}-${git_commit}-$(date +%s%3N 2>/dev/null || date +%s)-$$" \
       | _compute_hash_stdin 2>/dev/null || echo "")
   fi
 
