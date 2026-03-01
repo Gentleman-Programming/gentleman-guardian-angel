@@ -19,8 +19,8 @@ save_review_to_db() {
   # Only save if sqlite3 is available
   command -v sqlite3 &> /dev/null || return 0
 
-  # Initialize database if needed
-  load_env_config
+  # Initialize database if needed (failures should not block review execution)
+  load_env_config > /dev/null 2>&1 || return 0
   db_init > /dev/null 2>&1 || return 0
 
   # Get project info
