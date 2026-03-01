@@ -618,11 +618,26 @@ extract_review_insights() {
     local result_text="$2"
     local files="${3:-}"
 
-    # Use first file from comma-separated list as default file_path
-    local file_path="${files%%,*}"
+    # Derive default file_path from first non-empty entry in files.
+    # Supports both newline-separated and comma-separated formats.
+    local file_path=""
+    if [[ -n "$files" ]]; then
+        while IFS= read -r line; do
+            line=${line%%,*}
+            line=${line%%$'\r'*}
+            if [[ -n "$line" ]]; then
+                file_path="$line"
+                break
+            fi
+        done <<< "$files"
+    fi
 
     [[ "$review_id" -eq 0 ]] && return 1
     [[ -z "$result_text" ]] && return 0
+
+    # Strip sensitive data before extracting insights to prevent secrets
+    # (API keys, tokens, PEM blobs) from leaking into review_insights table
+    result_text=$(_strip_private "$result_text")
 
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
     [[ ! -f "$db_path" ]] && return 1
@@ -641,7 +656,7 @@ extract_review_insights() {
         local what
         what=$(echo "$result_text" | grep -iE '(security|vulnerab|injection|xss|csrf)' | head -1 | sed 's/^[[:space:]]*//')
         [[ -n "$what" ]] && {
-            db_save_insight "$review_id" "security" "$what" "" "" "$file_path" "high" 2>/dev/null
+            db_save_insight "$review_id" "security" "$what" "" "$file_path" "" "high" 2>/dev/null
             count=$((count + 1))
         }
     fi
@@ -651,7 +666,7 @@ extract_review_insights() {
         local what
         what=$(echo "$result_text" | grep -iE '(bug|fix|error|crash|null|undefined|exception)' | head -1 | sed 's/^[[:space:]]*//')
         [[ -n "$what" ]] && {
-            db_save_insight "$review_id" "bugfix" "$what" "" "" "$file_path" "medium" 2>/dev/null
+            db_save_insight "$review_id" "bugfix" "$what" "" "$file_path" "" "medium" 2>/dev/null
             count=$((count + 1))
         }
     fi
@@ -661,7 +676,7 @@ extract_review_insights() {
         local what
         what=$(echo "$result_text" | grep -iE '(performance|slow|optimize|n\+1|memory|latency)' | head -1 | sed 's/^[[:space:]]*//')
         [[ -n "$what" ]] && {
-            db_save_insight "$review_id" "performance" "$what" "" "" "$file_path" "medium" 2>/dev/null
+            db_save_insight "$review_id" "performance" "$what" "" "$file_path" "" "medium" 2>/dev/null
             count=$((count + 1))
         }
     fi
@@ -671,7 +686,27 @@ extract_review_insights() {
         local what
         what=$(echo "$result_text" | grep -iE '(pattern|convention|best.?practice|anti.?pattern|code.?smell)' | head -1 | sed 's/^[[:space:]]*//')
         [[ -n "$what" ]] && {
-            db_save_insight "$review_id" "pattern" "$what" "" "" "$file_path" "low" 2>/dev/null
+            db_save_insight "$review_id" "pattern" "$what" "" "$file_path" "" "low" 2>/dev/null
+            count=$((count + 1))
+        }
+    fi
+
+    # Design/decision insights
+    if echo "$lower_result" | grep -qE '(decision|decide|decided|chose|chosen|design choice|trade[- ]off|because)'; then
+        local what
+        what=$(echo "$result_text" | grep -iE '(decision|decide|decided|chose|chosen|design choice|trade[- ]off|because)' | head -1 | sed 's/^[[:space:]]*//')
+        [[ -n "$what" ]] && {
+            db_save_insight "$review_id" "decision" "$what" "" "$file_path" "" "medium" 2>/dev/null
+            count=$((count + 1))
+        }
+    fi
+
+    # Style/nit insights
+    if echo "$lower_result" | grep -qE '(style|nit:|naming|name.*convention|formatting|indent|indentation|whitespace|lint|linter)'; then
+        local what
+        what=$(echo "$result_text" | grep -iE '(style|nit:|naming|name.*convention|formatting|indent|indentation|whitespace|lint|linter)' | head -1 | sed 's/^[[:space:]]*//')
+        [[ -n "$what" ]] && {
+            db_save_insight "$review_id" "style" "$what" "" "$file_path" "" "low" 2>/dev/null
             count=$((count + 1))
         }
     fi

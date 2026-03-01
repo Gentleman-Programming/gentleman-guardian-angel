@@ -52,6 +52,20 @@ _engram_map_strength() {
 }
 
 # ============================================================================
+# Host Validation
+# ============================================================================
+
+# Validate GGA_ENGRAM_HOST format to prevent injection attacks.
+# Same pattern used for OLLAMA_HOST and LMSTUDIO_HOST in providers.sh.
+# Usage: validate_engram_host "$host" || return 0
+validate_engram_host() {
+    local host="$1"
+    # Regex: http or https, followed by hostname (alphanumeric, dots, hyphens),
+    # optional port, optional trailing slash
+    [[ "$host" =~ ^https?://[a-zA-Z0-9.-]+(:[0-9]+)?/?$ ]]
+}
+
+# ============================================================================
 # URL Encoding Helper
 # ============================================================================
 
@@ -254,6 +268,7 @@ engram_save_observation() {
     command -v curl &>/dev/null || return 0
 
     local engram_host="${GGA_ENGRAM_HOST:-http://localhost:7437}"
+    validate_engram_host "$engram_host" || return 0
     local engram_timeout="${GGA_ENGRAM_TIMEOUT:-3}"
 
     local json
@@ -291,6 +306,7 @@ engram_is_available() {
     command -v curl &>/dev/null || return 1
 
     local engram_host="${GGA_ENGRAM_HOST:-http://localhost:7437}"
+    validate_engram_host "$engram_host" || return 1
     local engram_timeout="${GGA_ENGRAM_TIMEOUT:-3}"
 
     curl -s --connect-timeout "$engram_timeout" --max-time "$engram_timeout" \
@@ -308,6 +324,7 @@ engram_search() {
     command -v curl &>/dev/null || return 0
 
     local engram_host="${GGA_ENGRAM_HOST:-http://localhost:7437}"
+    validate_engram_host "$engram_host" || return 0
     local engram_timeout="${GGA_ENGRAM_TIMEOUT:-3}"
     local engram_context_limit="${GGA_ENGRAM_CONTEXT_LIMIT:-5}"
 
@@ -383,6 +400,11 @@ engram_check() {
 
     if [[ "$engram_enabled" != "true" ]]; then
         echo "Engram bridge disabled (GGA_ENGRAM_ENABLED=false)"
+        return 1
+    fi
+
+    if ! validate_engram_host "$engram_host"; then
+        echo "Error: invalid GGA_ENGRAM_HOST format. Expected: http(s)://hostname(:port)"
         return 1
     fi
 

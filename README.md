@@ -283,6 +283,8 @@ All files comply with the coding standards defined in AGENTS.md.
 | `cache status`         | Show cache status for current project                | `gga cache status`         |
 | `cache clear`          | Clear cache for current project                      | `gga cache clear`          |
 | `cache clear-all`      | Clear all cached data                                | `gga cache clear-all`      |
+| `history`              | Show review history                                  | `gga history`              |
+| `search`               | Search review history                                | `gga search`               |
 | `engram check`         | Check Engram bridge status                           | `gga engram check`         |
 | `engram export <id>`   | Export review insights to Engram                     | `gga engram export <id>`   |
 | `engram recent [N]`    | Export insights from last N days                     | `gga engram recent [N]`    |
