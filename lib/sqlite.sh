@@ -459,10 +459,16 @@ WHERE id NOT IN (
     )
     WHERE rn <= $keep
 );"
-    sqlite3 "$db_path" <<< "$sql"
+    if ! sqlite3 "$db_path" <<< "$sql"; then
+        echo "Error: failed to delete old reviews" >&2
+        return 1
+    fi
 
     # Vacuum to reclaim space
-    sqlite3 "$db_path" "VACUUM;"
+    if ! sqlite3 "$db_path" "VACUUM;"; then
+        echo "Error: VACUUM failed" >&2
+        return 1
+    fi
 }
 
 # Check database integrity
