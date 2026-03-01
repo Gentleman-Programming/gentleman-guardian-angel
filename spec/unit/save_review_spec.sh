@@ -13,7 +13,7 @@ Describe 'save_review_to_db()'
     ! command -v sqlite3 &>/dev/null
   }
 
-  # Define save_review_to_db exactly as in bin/gga (lines 760-795)
+  # Define save_review_to_db exactly as in bin/gga's save_review_to_db implementation
   save_review_to_db() {
     local review_status="$1"
     local files_to_review="$2"

@@ -255,7 +255,12 @@ FROM (
     ORDER BY created_at DESC
     LIMIT $limit
 );"
-    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
+    local result
+    if ! result=$(sqlite3 "$db_path" <<< "$sql"); then
+        _json_array_fix ""
+        return 1
+    fi
+    _json_array_fix "$result"
 }
 db_get_review() {
     local db_path="${GGA_DB_PATH:-$HOME/.gga/gga.db}"
@@ -279,7 +284,12 @@ db_get_review() {
     'duration_ms', duration_ms
 ))
 FROM reviews WHERE id = $review_id;"
-    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
+    local result
+    if ! result=$(sqlite3 "$db_path" <<< "$sql"); then
+        _json_array_fix ""
+        return 1
+    fi
+    _json_array_fix "$result"
 }
 
 # ============================================================================
@@ -300,9 +310,9 @@ db_search_reviews() {
     fi
 
     # FTS5 auxiliary functions (snippet, bm25) cannot be used inside
-    # aggregate functions like json_group_array(). Use separator-based
-    # output and build JSON manually for maximum compatibility.
-    local sep='§'
+    # aggregate functions like json_group_array(). Use unit separator (0x1F)
+    # for field delimiting — safer than printable chars that may appear in text.
+    local sep=$'\x1f'
     local rows
     if ! rows=$(sqlite3 -separator "$sep" "$db_path" <<< "SELECT
     r.id,
@@ -310,7 +320,7 @@ db_search_reviews() {
     r.status,
     r.project_name,
     r.files_count,
-    snippet(reviews_fts, 1, '>>>', '<<<', '...', 32),
+    replace(snippet(reviews_fts, 1, '>>>', '<<<', '...', 32), char(31), ''),  -- col 1 = result
     bm25(reviews_fts)
 FROM reviews_fts
 JOIN reviews r ON reviews_fts.rowid = r.id

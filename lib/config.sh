@@ -28,7 +28,8 @@ load_env_config() {
 
     # Validate GGA_DB_PATH to prevent command injection
     # Reject paths with shell metacharacters: backticks, $(), ;, |, &, newlines
-    if [[ "$GGA_DB_PATH" =~ [\`\$\;\|\&\'] || "$GGA_DB_PATH" =~ $'\n' ]]; then
+    # Note: single quotes are valid Unix path chars and safe when double-quoted
+    if [[ "$GGA_DB_PATH" =~ [\`\$\;\|\&] || "$GGA_DB_PATH" =~ $'\n' ]]; then
         echo "Error: GGA_DB_PATH contains invalid characters: $GGA_DB_PATH" >&2
         echo "       Path must not contain shell metacharacters." >&2
         return 1
