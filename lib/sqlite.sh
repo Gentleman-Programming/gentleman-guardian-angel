@@ -384,7 +384,12 @@ FROM (
     ORDER BY created_at DESC
     LIMIT $limit
 );"
-    _json_array_fix "$(sqlite3 "$db_path" <<< "$sql")"
+    local result
+    if ! result=$(sqlite3 "$db_path" <<< "$sql"); then
+        _json_array_fix ""
+        return 1
+    fi
+    _json_array_fix "$result"
 }
 
 # ============================================================================
