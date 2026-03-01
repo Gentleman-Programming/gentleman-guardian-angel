@@ -350,10 +350,12 @@ Describe 'cache.sh'
     End
 
     It 'returns empty and fails outside git repo'
-      cd /tmp
+      NON_GIT_DIR=$(mktemp -d)
+      cd "$NON_GIT_DIR"
       When call get_project_cache_dir
       The status should be failure
       The output should eq ""
+      rm -rf "$NON_GIT_DIR"
     End
   End
 
