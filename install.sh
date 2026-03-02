@@ -63,6 +63,7 @@ mkdir -p "$LIB_INSTALL_DIR"
 cp "$SCRIPT_DIR/bin/gga" "$INSTALL_DIR/gga"
 cp "$SCRIPT_DIR/lib/providers.sh" "$LIB_INSTALL_DIR/providers.sh"
 cp "$SCRIPT_DIR/lib/cache.sh" "$LIB_INSTALL_DIR/cache.sh"
+cp "$SCRIPT_DIR/lib/pr_mode.sh" "$LIB_INSTALL_DIR/pr_mode.sh"
 
 # Update LIB_DIR path in installed script
 if [[ "$(uname)" == "Darwin" ]]; then
@@ -75,6 +76,7 @@ fi
 chmod +x "$INSTALL_DIR/gga"
 chmod +x "$LIB_INSTALL_DIR/providers.sh"
 chmod +x "$LIB_INSTALL_DIR/cache.sh"
+chmod +x "$LIB_INSTALL_DIR/pr_mode.sh"
 
 echo -e "${GREEN}✅ Installed gga to $INSTALL_DIR${NC}"
 echo ""
