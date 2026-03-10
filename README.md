@@ -458,6 +458,7 @@ Use whichever AI CLI you have installed:
 | **Ollama**        | `ollama:<model>`   | `ollama run <model> "prompt"`     | [ollama.ai](https://ollama.ai)                                                     |
 | **LM Studio**     | `lmstudio[:model]` | HTTP API call to local server     | [lmstudio.ai](https://lmstudio.ai)                                                 |
 | **GitHub Models** | `github:<model>`   | HTTP API via `gh auth token`      | [github.com/marketplace/models](https://github.com/marketplace/models)              |
+| **Kiro**          | `kiro-cli`             | `kiro-cli chat --no-interactive "prompt"` | [docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line.html](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line.html) |
 
 ### Provider Examples
 
