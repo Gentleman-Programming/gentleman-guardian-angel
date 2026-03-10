@@ -76,6 +76,7 @@ fi
 chmod +x "$INSTALL_DIR/gga"
 chmod +x "$LIB_INSTALL_DIR/providers.sh"
 chmod +x "$LIB_INSTALL_DIR/cache.sh"
+chmod +x "$LIB_INSTALL_DIR/pr_mode.sh"
 
 echo -e "${GREEN}✅ Installed gga to $INSTALL_DIR${NC}"
 echo ""
