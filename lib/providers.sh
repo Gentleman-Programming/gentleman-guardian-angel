@@ -236,8 +236,10 @@ execute_gemini() {
     return 1
   fi
   
-  gemini -p "$prompt" 2>&1
-  return $?
+  # Pass prompt via stdin to avoid ARG_MAX "argument list too long" errors
+  # when reviewing large files. Gemini CLI appends -p content to stdin input.
+  printf '%s' "$prompt" | gemini -p "" 2>&1
+  return "${PIPESTATUS[1]}"
 }
 
 is_gemini_authenticated() {
@@ -791,15 +793,25 @@ execute_provider_with_timeout() {
   local timeout="${3:-300}"
   local base_provider="${provider%%:*}"
 
+  # Write prompt to a temp file to avoid hitting the OS ARG_MAX limit.
+  # Passing large prompts as command-line arguments causes "Argument list too long"
+  # because exec() passes args through the kernel with a hard size cap (~2MB).
+  local _prompt_file
+  _prompt_file=$(mktemp "${TMPDIR:-/tmp}/gga_prompt.XXXXXX")
+  printf '%s' "$prompt" > "$_prompt_file"
+
   case "$base_provider" in
     claude)
-      execute_with_timeout "$timeout" "Claude" bash -c "printf '%s' \"\$1\" | claude --print 2>&1" -- "$prompt"
+      # Pass prompt via stdin to avoid ARG_MAX limits
+      execute_with_timeout "$timeout" "Claude" bash -c "claude --print < \"\$1\" 2>&1" -- "$_prompt_file"
       ;;
     gemini)
-      execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
+      # -p '' keeps headless/non-interactive mode; prompt arrives via stdin
+      execute_with_timeout "$timeout" "Gemini" bash -c "gemini -p '' < \"\$1\" 2>&1" -- "$_prompt_file"
       ;;
     codex)
-      execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
+      # Pass prompt via stdin to avoid ARG_MAX limits
+      execute_with_timeout "$timeout" "Codex" bash -c "codex exec < \"\$1\" 2>&1" -- "$_prompt_file"
       ;;
     opencode)
       local model="${provider#*:}"
@@ -807,9 +819,9 @@ execute_provider_with_timeout() {
         model=""
       fi
       if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" bash -c "opencode run --model \"\$1\" < \"\$2\" 2>&1" -- "$model" "$_prompt_file"
       else
-        execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" bash -c "opencode run < \"\$1\" 2>&1" -- "$_prompt_file"
       fi
       ;;
     ollama)
@@ -843,4 +855,8 @@ execute_provider_with_timeout() {
       execute_with_timeout "$timeout" "$base_provider" execute_provider "$provider" "$prompt"
       ;;
   esac
+
+  local _ec=$?
+  rm -f "$_prompt_file"
+  return $_ec
 }
