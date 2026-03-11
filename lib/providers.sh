@@ -72,13 +72,13 @@ validate_provider() {
       fi
       ;;
     kiro-cli)
-      if ! command -v q &> /dev/null; then
+      if ! command -v kiro-cli &> /dev/null; then
         echo -e "${RED}❌ Kiro CLI - Amazon Q Developer not found${NC}"
         echo ""
         echo "Install Kiro CLI:"
         echo "  https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line.html"
         echo "  # After installation, run:"
-        echo "  q login"
+        echo "  kiro-cli login"
         echo ""
         return 1
       fi
