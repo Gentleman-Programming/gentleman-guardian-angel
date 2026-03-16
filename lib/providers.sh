@@ -8,6 +8,7 @@
 # - gemini: Google Gemini CLI
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
+# - kiro-cli: Kiro CLI - Amazon Q Developer
 # - ollama:<model>: Ollama with specified model
 # - lmstudio[:model]: LM Studio (optional model)
 # - github:<model>: GitHub Models (OpenAI-compatible API)
@@ -66,6 +67,18 @@ validate_provider() {
         echo ""
         echo "Install OpenCode CLI:"
         echo "  https://opencode.ai"
+        echo ""
+        return 1
+      fi
+      ;;
+    kiro-cli)
+      if ! command -v kiro-cli &> /dev/null; then
+        echo -e "${RED}❌ Kiro CLI - Amazon Q Developer not found${NC}"
+        echo ""
+        echo "Install Kiro CLI:"
+        echo "  https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line.html"
+        echo "  # After installation, run:"
+        echo "  kiro-cli login"
         echo ""
         return 1
       fi
@@ -155,6 +168,7 @@ validate_provider() {
       echo "  - gemini"
       echo "  - codex"
       echo "  - opencode"
+      echo "  - kiro-cli"
       echo "  - ollama:<model>"
       echo "  - lmstudio[:model]"
       echo "  - github:<model>"
@@ -191,6 +205,9 @@ execute_provider() {
         model=""
       fi
       execute_opencode "$model" "$prompt"
+      ;;
+    kiro-cli)
+      execute_kiro "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -264,6 +281,15 @@ execute_opencode() {
   else
     opencode run "$prompt" 2>&1
   fi
+  return $?
+}
+
+execute_kiro() {
+  local prompt="$1"
+  
+  # We use --no-interactive so that Q CLI returns the output and does not wait
+  # for interaction in the terminal, which would hang the git hook.
+  kiro-cli chat --no-interactive "$prompt" 2>&1
   return $?
 }
 
@@ -639,6 +665,9 @@ get_provider_info() {
         echo "OpenCode CLI (model: $model)"
       fi
       ;;
+    kiro-cli)
+      echo "Kiro CLI - Amazon Q Developer"
+      ;;
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
@@ -811,6 +840,9 @@ execute_provider_with_timeout() {
       else
         execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
       fi
+      ;;
+    kiro-cli)
+      execute_with_timeout "$timeout" "Kiro" execute_kiro "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
