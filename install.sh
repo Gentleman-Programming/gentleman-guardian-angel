@@ -60,11 +60,15 @@ fi
 
 # Check if already installed
 if [[ -f "$INSTALL_DIR/gga" ]]; then
-    echo -e "${YELLOW}⚠️  gga is already installed${NC}"
-    read -p "Reinstall? (y/N): " confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        echo "Aborted."
-        exit 0
+    if [[ -t 0 ]]; then
+        echo -e "${YELLOW}⚠️  gga is already installed${NC}"
+        read -p "Reinstall? (y/N): " confirm
+        if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+            echo "Aborted."
+            exit 0
+        fi
+    else
+        echo -e "${YELLOW}⚠️  gga is already installed, reinstalling...${NC}"
     fi
 fi
 
