@@ -127,3 +127,67 @@ If you get "Failed to connect to LM Studio" errors:
    ```bash
    curl http://localhost:1234/v1/models
    ```
+
+---
+
+## Oh My Zsh alias conflict
+
+If you see an error like this when running `gga`:
+
+```
+⚠️  Oh My Zsh alias conflict detected!
+
+The 'git' plugin in Oh My Zsh defines: alias gga='git gui citool --amend'
+This conflicts with the Gentleman Guardian Angel CLI.
+
+Solution: Add to your ~/.zshrc:
+  unalias gga
+
+Or call gga directly:
+  /usr/local/bin/gga <command>
+  command gga <command>
+```
+
+### What's happening
+
+Oh My Zsh's git plugin defines an alias `gga='git gui citool --amend'`. When you type `gga`, your shell expands it to `git gui citool --amend`, which passes "gui" as the first argument to the GGA script.
+
+### How to fix
+
+**Option 1: Remove the alias (recommended)**
+
+Add this to your `~/.zshrc`, **after** the `source $ZSH/oh-my-zsh.sh` line:
+
+```bash
+unalias gga 2>/dev/null
+```
+
+Then reload your shell:
+
+```bash
+source ~/.zshrc
+```
+
+**Option 2: Remove the git plugin from Oh My Zsh**
+
+Edit your `~/.zshrc` and remove `git` from the plugins list:
+
+```bash
+# Before
+plugins=(git docker node)
+
+# After
+plugins=(docker node)
+```
+
+> **Note:** This removes **all** git aliases provided by Oh My Zsh, not just `gga`.
+
+**Option 3: Use `command` to bypass aliases**
+
+Prefix every call with `command` to skip alias expansion:
+
+```bash
+command gga init
+```
+
+This works but you have to remember to do it every time.

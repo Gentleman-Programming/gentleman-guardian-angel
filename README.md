@@ -81,6 +81,22 @@ echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 
 > **WSL** is also fully supported — no special configuration needed.
 
+### Oh My Zsh users
+
+If you use [Oh My Zsh](https://ohmyz.sh/) with the `git` plugin enabled (the default), the alias `gga` will conflict with this CLI. You'll see:
+
+```
+git: 'gui' is not a git command. See 'git --help'.
+```
+
+**Fix:** Add this line to your `~/.zshrc` after the Oh My Zsh source line:
+
+```bash
+unalias gga 2>/dev/null
+```
+
+Then run `source ~/.zshrc` or open a new terminal.
+
 ---
 
 ## 🚀 Quick Start
