@@ -8,6 +8,7 @@
 # - gemini: Google Gemini CLI
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
+# - cursor: Cursor Agent CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
 # - lmstudio[:model]: LM Studio (optional model)
 # - github:<model>: GitHub Models (OpenAI-compatible API)
@@ -66,6 +67,16 @@ validate_provider() {
         echo ""
         echo "Install OpenCode CLI:"
         echo "  https://opencode.ai"
+        echo ""
+        return 1
+      fi
+      ;;
+    cursor)
+      if ! command -v agent &> /dev/null; then
+        echo -e "${RED}❌ Cursor Agent CLI not found${NC}"
+        echo ""
+        echo "Install Cursor Agent CLI:"
+        echo "  curl https://cursor.com/install -fsS | bash"
         echo ""
         return 1
       fi
@@ -155,6 +166,7 @@ validate_provider() {
       echo "  - gemini"
       echo "  - codex"
       echo "  - opencode"
+      echo "  - cursor"
       echo "  - ollama:<model>"
       echo "  - lmstudio[:model]"
       echo "  - github:<model>"
@@ -191,6 +203,13 @@ execute_provider() {
         model=""
       fi
       execute_opencode "$model" "$prompt"
+      ;;
+    cursor)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_cursor "$model" "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -263,6 +282,18 @@ execute_opencode() {
     opencode run --model "$model" "$prompt" 2>&1
   else
     opencode run "$prompt" 2>&1
+  fi
+  return $?
+}
+
+execute_cursor() {
+  local model="$1"
+  local prompt="$2"
+  
+  if [[ -n "$model" ]]; then
+    agent -p "$prompt" --model "$model" --output-format text 2>&1
+  else
+    agent -p "$prompt" --output-format text 2>&1
   fi
   return $?
 }
@@ -639,6 +670,14 @@ get_provider_info() {
         echo "OpenCode CLI (model: $model)"
       fi
       ;;
+    cursor)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        echo "Cursor Agent"
+      else
+        echo "Cursor Agent (model: $model)"
+      fi
+      ;;
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
@@ -811,6 +850,13 @@ execute_provider_with_timeout() {
       else
         execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
       fi
+      ;;
+    cursor)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_with_timeout "$timeout" "Cursor Agent" execute_cursor "$model" "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
