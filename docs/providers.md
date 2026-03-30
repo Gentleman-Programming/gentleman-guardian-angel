@@ -16,6 +16,7 @@ Use whichever AI CLI you have installed:
 | **Gemini**        | `gemini`           | `echo "prompt" \| gemini`         | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
 | **Codex**         | `codex`            | `codex exec "prompt"`             | `npm i -g @openai/codex`                                                           |
 | **OpenCode**      | `opencode`         | `echo "prompt" \| opencode run`   | [opencode.ai](https://opencode.ai)                                                 |
+| **Cursor Agent**  | `cursor[:model]`   | `agent -p "prompt" --output-format text` | [cursor.com](https://cursor.com)                                                   |
 | **Ollama**        | `ollama:<model>`   | `ollama run <model> "prompt"`     | [ollama.ai](https://ollama.ai)                                                     |
 | **LM Studio**     | `lmstudio[:model]` | HTTP API call to local server     | [lmstudio.ai](https://lmstudio.ai)                                                 |
 | **GitHub Models** | `github:<model>`   | HTTP API via `gh auth token`      | [github.com/marketplace/models](https://github.com/marketplace/models)              |
@@ -39,6 +40,12 @@ PROVIDER="opencode"
 
 # Use OpenCode with specific model
 PROVIDER="opencode:anthropic/claude-opus-4-5"
+
+# Use Cursor Agent (default model)
+PROVIDER="cursor"
+
+# Use Cursor Agent with specific model
+PROVIDER="cursor:composer-2"
 
 # Use Ollama with Llama 3.2
 PROVIDER="ollama:llama3.2"
@@ -99,6 +106,18 @@ Google's Gemini CLI. Built into Antigravity IDE.
 
 # Test it works
 echo "Say hello" | gemini
+```
+
+### Cursor Agent
+
+Uses Cursor's built-in Agent CLI to interact with the models via your Cursor account.
+
+```bash
+# Install Cursor Agent CLI
+curl https://cursor.com/install -fsS | bash
+
+# Test it works
+agent -p "Say hello" --output-format text
 ```
 
 ### GitHub Models
