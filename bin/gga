@@ -1182,6 +1182,23 @@ EOF
 # ============================================================================
 
 main() {
+  # Detect Oh My Zsh git plugin alias conflict
+  # OMZ alias: gga='git gui citool --amend'
+  if [[ "$1" == "gui" || "$1" == "citool" ]]; then
+    echo -e "${RED}⚠️  Oh My Zsh alias conflict detected!${NC}"
+    echo ""
+    echo "The 'git' plugin in Oh My Zsh defines: alias gga='git gui citool --amend'"
+    echo "This conflicts with the Gentleman Guardian Angel CLI."
+    echo ""
+    echo "Solution: Add to your ~/.zshrc:"
+    echo "  unalias gga"
+    echo ""
+    echo "Or call gga directly:"
+    echo "  /usr/local/bin/gga <command>"
+    echo "  command gga <command>"
+    exit 1
+  fi
+
   case "${1:-}" in
     run)
       shift
