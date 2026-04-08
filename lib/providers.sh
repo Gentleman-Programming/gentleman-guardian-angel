@@ -249,7 +249,7 @@ execute_codex() {
   
   # Codex uses exec subcommand for non-interactive mode
   # Using --output-last-message to get just the final response
-  codex exec "$prompt" 2>&1
+  codex exec "$prompt" < /dev/null 2>&1
   return $?
 }
 
@@ -799,7 +799,7 @@ execute_provider_with_timeout() {
       execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
       ;;
     codex)
-      execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
+      execute_with_timeout "$timeout" "Codex" codex exec "$prompt" < /dev/null
       ;;
     opencode)
       local model="${provider#*:}"
