@@ -923,12 +923,13 @@ cmd_run() {
   echo ""
 
   # Parse result
-  # Search for STATUS in the first 15 lines to handle AI responses that include
-  # preamble text (e.g., instruction acknowledgments, markdown formatting)
+  # Search for STATUS anywhere in the output to handle AI responses that include
+  # preamble text (e.g., instruction acknowledgments, markdown formatting,
+  # or CLI session metadata like Codex's ~15-line header)
   # Accepts: "STATUS: PASSED", "**STATUS: PASSED**", etc.
   local status_check
-  status_check=$(echo "$RESULT" | head -n 15)
-  
+  status_check=$(echo "$RESULT" | grep "STATUS:")
+
   if echo "$status_check" | grep -q "STATUS: PASSED"; then
     # Cache the passed files
     if [[ "$cache_initialized" == true ]]; then
@@ -948,7 +949,7 @@ cmd_run() {
     if [[ "$STRICT_MODE" == "true" ]]; then
       log_error "STRICT MODE: Failing due to ambiguous response"
       echo ""
-      echo "Expected 'STATUS: PASSED' or 'STATUS: FAILED' in the first 15 lines"
+      echo "Expected 'STATUS: PASSED' or 'STATUS: FAILED' in the output"
       echo "Set STRICT_MODE=false in config to allow ambiguous responses"
       echo ""
       exit 1
