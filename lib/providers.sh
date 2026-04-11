@@ -246,11 +246,23 @@ is_gemini_authenticated() {
 
 execute_codex() {
   local prompt="$1"
-  
-  # Codex uses exec subcommand for non-interactive mode
-  # Using --output-last-message to get just the final response
-  codex exec "$prompt" 2>&1
-  return $?
+
+  # Codex uses exec subcommand for non-interactive mode.
+  # Capture ONLY the final assistant message to avoid transcript noise
+  # (instructions can include both STATUS lines and confuse parsers).
+  local output_file
+  output_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_codex_last_msg.XXXXXX")
+
+  # Silence Codex event stream and emit only the final message file content.
+  codex exec --output-last-message "$output_file" "$prompt" >/dev/null 2>&1
+  local codex_status=$?
+
+  if [[ -f "$output_file" && -s "$output_file" ]]; then
+    cat "$output_file"
+  fi
+
+  rm -f "$output_file"
+  return $codex_status
 }
 
 execute_opencode() {
@@ -793,13 +805,13 @@ execute_provider_with_timeout() {
 
   case "$base_provider" in
     claude)
-      execute_with_timeout "$timeout" "Claude" bash -c "printf '%s' \"\$1\" | claude --print 2>&1" -- "$prompt"
+      execute_with_timeout "$timeout" "Claude" execute_claude "$prompt"
       ;;
     gemini)
       execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
       ;;
     codex)
-      execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
+      execute_with_timeout "$timeout" "Codex" execute_codex "$prompt"
       ;;
     opencode)
       local model="${provider#*:}"
