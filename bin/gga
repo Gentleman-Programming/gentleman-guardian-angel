@@ -922,41 +922,40 @@ cmd_run() {
   echo "$RESULT"
   echo ""
 
-  # Parse result
-  # Search for STATUS in the first 15 lines to handle AI responses that include
-  # preamble text (e.g., instruction acknowledgments, markdown formatting)
-  # Accepts: "STATUS: PASSED", "**STATUS: PASSED**", etc.
-  local status_check
-  status_check=$(echo "$RESULT" | head -n 15)
-  
-  if echo "$status_check" | grep -q "STATUS: PASSED"; then
-    # Cache the passed files
-    if [[ "$cache_initialized" == true ]]; then
-      cache_files_passed "$files_to_review"
+  # Parse result status using strict line-based parser to avoid false matches
+  # from echoed instructions (e.g., responses containing both STATUS lines).
+  local parsed_status
+  if parsed_status=$(parse_review_status "$RESULT" 30); then
+    if [[ "$parsed_status" == "PASSED" ]]; then
+      # Cache the passed files
+      if [[ "$cache_initialized" == true ]]; then
+        cache_files_passed "$files_to_review"
+      fi
+      log_success "CODE REVIEW PASSED"
+      echo ""
+      exit 0
+    elif [[ "$parsed_status" == "FAILED" ]]; then
+      log_error "CODE REVIEW FAILED"
+      echo ""
+      echo "Fix the violations listed above before committing."
+      echo ""
+      exit 1
     fi
-    log_success "CODE REVIEW PASSED"
+  fi
+
+  log_warning "Could not determine review status"
+  if [[ "$STRICT_MODE" == "true" ]]; then
+    log_error "STRICT MODE: Failing due to ambiguous response"
     echo ""
-    exit 0
-  elif echo "$status_check" | grep -q "STATUS: FAILED"; then
-    log_error "CODE REVIEW FAILED"
-    echo ""
-    echo "Fix the violations listed above before committing."
+    echo "Expected exactly one line starting with 'STATUS: PASSED' or 'STATUS: FAILED'"
+    echo "in the first 30 lines of provider output."
+    echo "Set STRICT_MODE=false in config to allow ambiguous responses"
     echo ""
     exit 1
   else
-    log_warning "Could not determine review status"
-    if [[ "$STRICT_MODE" == "true" ]]; then
-      log_error "STRICT MODE: Failing due to ambiguous response"
-      echo ""
-      echo "Expected 'STATUS: PASSED' or 'STATUS: FAILED' in the first 15 lines"
-      echo "Set STRICT_MODE=false in config to allow ambiguous responses"
-      echo ""
-      exit 1
-    else
-      log_warning "Allowing commit (STRICT_MODE=false)"
-      echo ""
-      exit 0
-    fi
+    log_warning "Allowing commit (STRICT_MODE=false)"
+    echo ""
+    exit 0
   fi
 }
 
@@ -1104,6 +1103,68 @@ get_ci_files() {
       fi
     fi
   done
+}
+
+# Parse provider review status from response text
+# Returns:
+#   0 + "PASSED" | "FAILED" on stdout when exactly one status is found
+#   1 + "AMBIGUOUS" on stdout when no status or conflicting statuses are found
+#
+# Parsing rules:
+# - Scan only first N lines (default: 30)
+# - Match STATUS only when it appears at line-start (after optional markdown wrappers)
+# - Strip ANSI color codes before matching
+# - If both PASSED and FAILED are present in scan window, treat as ambiguous
+parse_review_status() {
+  local response="$1"
+  local max_lines="${2:-30}"
+  local line_no=0
+  local found_status=""
+  local line
+
+  while IFS= read -r line; do
+    line_no=$((line_no + 1))
+    if [[ "$line_no" -gt "$max_lines" ]]; then
+      break
+    fi
+
+    # Remove ANSI escape codes
+    line=$(printf '%s' "$line" | sed $'s/\x1b\[[0-9;]*[mK]//g')
+
+    # Trim leading/trailing whitespace
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+
+    # Remove common markdown wrappers/prefixes
+    line="${line#\*\*}"
+    line="${line%\*\*}"
+    line="${line#\*}"
+    line="${line%\*}"
+    line="${line#\`}"
+    line="${line%\`}"
+    line="${line#\# }"
+    line="${line#> }"
+
+    # STATUS must begin the normalized line
+    if [[ "$line" =~ ^STATUS:[[:space:]]*(PASSED|FAILED)([^[:alnum:]_].*)?$ ]]; then
+      local candidate="${BASH_REMATCH[1]}"
+
+      if [[ -z "$found_status" ]]; then
+        found_status="$candidate"
+      elif [[ "$found_status" != "$candidate" ]]; then
+        echo "AMBIGUOUS"
+        return 1
+      fi
+    fi
+  done <<< "$response"
+
+  if [[ -n "$found_status" ]]; then
+    echo "$found_status"
+    return 0
+  fi
+
+  echo "AMBIGUOUS"
+  return 1
 }
 
 build_prompt() {

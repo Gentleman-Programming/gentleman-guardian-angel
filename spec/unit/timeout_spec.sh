@@ -157,6 +157,28 @@ Describe 'execute_provider_with_timeout()'
     End
   End
 
+  Describe 'provider routing uses helper functions'
+    It 'routes claude through execute_claude helper'
+      execute_claude() {
+        echo "CLAUDE_FN_CALLED"
+      }
+
+      When call execute_provider_with_timeout "claude" "test" 5
+      The status should eq 0
+      The output should include "CLAUDE_FN_CALLED"
+    End
+
+    It 'routes codex through execute_codex helper'
+      execute_codex() {
+        echo "CODEX_FN_CALLED"
+      }
+
+      When call execute_provider_with_timeout "codex" "test" 5
+      The status should eq 0
+      The output should include "CODEX_FN_CALLED"
+    End
+  End
+
   Describe 'ollama host validation'
     It 'fails with invalid OLLAMA_HOST before attempting execution'
       OLLAMA_HOST="invalid://bad"

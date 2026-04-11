@@ -2,24 +2,53 @@
 
 Describe 'STATUS parsing (Issue #18)'
   # Test the status parsing logic directly
-  # The parsing should find STATUS: PASSED/FAILED in the first 15 lines
-  # and accept markdown formatting like **STATUS: PASSED**
+  # The parsing should find exactly one STATUS verdict in the first 30 lines,
+  # accept markdown formatting like **STATUS: PASSED**, and treat
+  # conflicting verdicts as ambiguous.
 
   parse_status() {
     local response="$1"
-    local status_check
-    status_check=$(echo "$response" | head -n 15)
-    
-    if echo "$status_check" | grep -q "STATUS: PASSED"; then
-      echo "PASSED"
+    local max_lines="${2:-30}"
+    local line_no=0
+    local found_status=""
+    local line
+
+    while IFS= read -r line; do
+      line_no=$((line_no + 1))
+      if [[ "$line_no" -gt "$max_lines" ]]; then
+        break
+      fi
+
+      line=$(printf '%s' "$line" | sed $'s/\x1b\[[0-9;]*[mK]//g')
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      line="${line#\*\*}"
+      line="${line%\*\*}"
+      line="${line#\*}"
+      line="${line%\*}"
+      line="${line#\`}"
+      line="${line%\`}"
+      line="${line#\# }"
+      line="${line#> }"
+
+      if [[ "$line" =~ ^STATUS:[[:space:]]*(PASSED|FAILED)([^[:alnum:]_].*)?$ ]]; then
+        local candidate="${BASH_REMATCH[1]}"
+        if [[ -z "$found_status" ]]; then
+          found_status="$candidate"
+        elif [[ "$found_status" != "$candidate" ]]; then
+          echo "AMBIGUOUS"
+          return 1
+        fi
+      fi
+    done <<< "$response"
+
+    if [[ -n "$found_status" ]]; then
+      echo "$found_status"
       return 0
-    elif echo "$status_check" | grep -q "STATUS: FAILED"; then
-      echo "FAILED"
-      return 0
-    else
-      echo "AMBIGUOUS"
-      return 1
     fi
+
+    echo "AMBIGUOUS"
+    return 1
   }
 
   Describe 'STATUS on first line'
@@ -93,9 +122,9 @@ All checks passed."
     End
   End
 
-  Describe 'STATUS beyond first 15 lines'
-    It 'returns AMBIGUOUS when STATUS is on line 16'
-      # 15 lines of preamble + STATUS on line 16 (should not be found)
+  Describe 'STATUS beyond first 30 lines'
+    It 'returns AMBIGUOUS when STATUS is on line 31'
+      # 30 lines of preamble + STATUS on line 31 (should not be found)
       response="Line 1
 Line 2
 Line 3
@@ -111,6 +140,21 @@ Line 12
 Line 13
 Line 14
 Line 15
+Line 16
+Line 17
+Line 18
+Line 19
+Line 20
+Line 21
+Line 22
+Line 23
+Line 24
+Line 25
+Line 26
+Line 27
+Line 28
+Line 29
+Line 30
 STATUS: PASSED"
       
       When call parse_status "$response"
@@ -118,8 +162,8 @@ STATUS: PASSED"
       The status should be failure
     End
 
-    It 'detects STATUS on line 15 (boundary)'
-      # 14 lines of preamble + STATUS on line 15 (should be found)
+    It 'detects STATUS on line 30 (boundary)'
+      # 29 lines of preamble + STATUS on line 30 (should be found)
       response="Line 1
 Line 2
 Line 3
@@ -134,6 +178,21 @@ Line 11
 Line 12
 Line 13
 Line 14
+Line 15
+Line 16
+Line 17
+Line 18
+Line 19
+Line 20
+Line 21
+Line 22
+Line 23
+Line 24
+Line 25
+Line 26
+Line 27
+Line 28
+Line 29
 STATUS: PASSED"
       
       When call parse_status "$response"
@@ -157,15 +216,22 @@ No issues found."
       The status should be failure
     End
 
-    It 'handles STATUS in middle of line'
+    It 'returns AMBIGUOUS when STATUS is in middle of line'
       When call parse_status "Review result: STATUS: PASSED - all good"
-      The output should equal "PASSED"
-      The status should be success
+      The output should equal "AMBIGUOUS"
+      The status should be failure
     End
 
-    It 'prioritizes first STATUS found (PASSED before FAILED)'
+    It 'returns AMBIGUOUS when both PASSED and FAILED are present'
       When call parse_status "STATUS: PASSED
-Note: Almost STATUS: FAILED on one check"
+STATUS: FAILED"
+      The output should equal "AMBIGUOUS"
+      The status should be failure
+    End
+
+    It 'strips ANSI sequences before STATUS parsing'
+      response=$'\033[0;32mSTATUS: PASSED\033[0m\nAll good'
+      When call parse_status "$response"
       The output should equal "PASSED"
       The status should be success
     End
