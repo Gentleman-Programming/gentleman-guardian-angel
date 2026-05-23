@@ -162,6 +162,12 @@ print_help() {
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
   echo "  TIMEOUT            Max seconds to wait for AI response (default: 300)"
   echo "  PR_BASE_BRANCH     Base branch for --pr-mode (default: auto-detect)"
+  echo "  OPENCODE_VARIANT   OpenCode reasoning effort (default: unset)"
+  echo "                     Values: max, high, medium, low, minimal"
+  echo "  OPENCODE_AGENT     OpenCode agent profile (default: unset)"
+  echo "                     ⚠️  WARNING: loads the agent's full system prompt."
+  echo "                     Only use with lightweight agents. For most cases,"
+  echo "                     OPENCODE_VARIANT alone is sufficient."
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init               # Create sample config"
@@ -177,6 +183,8 @@ print_help() {
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
   echo "  GGA_PROVIDER      Override provider from config"
   echo "  GGA_TIMEOUT       Override timeout from config (seconds)"
+  echo "  GGA_OPENCODE_VARIANT  Override OPENCODE_VARIANT from config"
+  echo "  GGA_OPENCODE_AGENT    Override OPENCODE_AGENT from config"
   echo ""
 }
 
@@ -294,6 +302,16 @@ cmd_config() {
   echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
   echo -e "  TIMEOUT:           ${CYAN}${TIMEOUT}s${NC}"
+  if [[ -n "${OPENCODE_VARIANT:-}" ]]; then
+    echo -e "  OPENCODE_VARIANT:  ${CYAN}$OPENCODE_VARIANT${NC}"
+  else
+    echo -e "  OPENCODE_VARIANT:  ${YELLOW}Not set (using default)${NC}"
+  fi
+  if [[ -n "${OPENCODE_AGENT:-}" ]]; then
+    echo -e "  OPENCODE_AGENT:    ${CYAN}$OPENCODE_AGENT${NC}"
+  else
+    echo -e "  OPENCODE_AGENT:    ${YELLOW}Not set (using default)${NC}"
+  fi
   if [[ -n "${PR_BASE_BRANCH:-}" ]]; then
     echo -e "  PR_BASE_BRANCH:    ${CYAN}$PR_BASE_BRANCH${NC}"
   else
@@ -371,6 +389,18 @@ STRICT_MODE="true"
 # Default: 300 (5 minutes)
 # Increase for large changesets or slow connections
 TIMEOUT="300"
+
+# OpenCode provider: reasoning effort (variant)
+# Controls how much the model "thinks" before responding.
+# Values: max, high, medium, low, minimal
+# Leave empty to use the default. Most users only need this.
+# OPENCODE_VARIANT="max"
+
+# OpenCode provider: agent profile
+# ⚠️  WARNING: loads the agent's FULL system prompt (can add thousands of tokens).
+# Creates a custom lightweight agent in opencode.json for GGA.
+# Leave empty unless you know what you're doing.
+# OPENCODE_AGENT=""
 
 # Base branch for --pr-mode (auto-detects main/master/develop if empty)
 # Default: auto-detect
