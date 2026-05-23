@@ -257,12 +257,17 @@ execute_opencode() {
   local model="$1"
   local prompt="$2"
   
-  # OpenCode CLI accepts prompt as positional argument
-  # opencode run [message..] - message is a positional array
+  # Optional variant and agent flags (GGA-prefixed takes precedence)
+  local flags=()
+  [[ -n "${GGA_OPENCODE_VARIANT:-}" ]] && flags+=(--variant "$GGA_OPENCODE_VARIANT")
+  [[ -z "${GGA_OPENCODE_VARIANT:-}" && -n "${OPENCODE_VARIANT:-}" ]] && flags+=(--variant "$OPENCODE_VARIANT")
+  [[ -n "${GGA_OPENCODE_AGENT:-}" ]] && flags+=(--agent "$GGA_OPENCODE_AGENT")
+  [[ -z "${GGA_OPENCODE_AGENT:-}" && -n "${OPENCODE_AGENT:-}" ]] && flags+=(--agent "$OPENCODE_AGENT")
+  
   if [[ -n "$model" ]]; then
-    opencode run --model "$model" "$prompt" 2>&1
+    opencode run --model "$model" "${flags[@]}" "$prompt" 2>&1
   else
-    opencode run "$prompt" 2>&1
+    opencode run "${flags[@]}" "$prompt" 2>&1
   fi
   return $?
 }
@@ -633,11 +638,15 @@ get_provider_info() {
       ;;
     opencode)
       local model="${provider#*:}"
-      if [[ "$model" == "$provider" ]]; then
-        echo "OpenCode CLI"
-      else
-        echo "OpenCode CLI (model: $model)"
+      local info="OpenCode CLI"
+      [[ -n "${GGA_OPENCODE_VARIANT:-}" ]] && info="$info (variant: $GGA_OPENCODE_VARIANT)"
+      [[ -z "${GGA_OPENCODE_VARIANT:-}" && -n "${OPENCODE_VARIANT:-}" ]] && info="$info (variant: $OPENCODE_VARIANT)"
+      [[ -n "${GGA_OPENCODE_AGENT:-}" ]] && info="$info (agent: $GGA_OPENCODE_AGENT)"
+      [[ -z "${GGA_OPENCODE_AGENT:-}" && -n "${OPENCODE_AGENT:-}" ]] && info="$info (agent: $OPENCODE_AGENT)"
+      if [[ "$model" != "$provider" ]]; then
+        info="$info (model: $model)"
       fi
+      echo "$info"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -806,10 +815,16 @@ execute_provider_with_timeout() {
       if [[ "$model" == "$provider" ]]; then
         model=""
       fi
+      # Optional variant and agent flags (GGA-prefixed takes precedence)
+      local flags=()
+      [[ -n "${GGA_OPENCODE_VARIANT:-}" ]] && flags+=(--variant "$GGA_OPENCODE_VARIANT")
+      [[ -z "${GGA_OPENCODE_VARIANT:-}" && -n "${OPENCODE_VARIANT:-}" ]] && flags+=(--variant "$OPENCODE_VARIANT")
+      [[ -n "${GGA_OPENCODE_AGENT:-}" ]] && flags+=(--agent "$GGA_OPENCODE_AGENT")
+      [[ -z "${GGA_OPENCODE_AGENT:-}" && -n "${OPENCODE_AGENT:-}" ]] && flags+=(--agent "$OPENCODE_AGENT")
       if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "${flags[@]}" "$prompt"
       else
-        execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" opencode run "${flags[@]}" "$prompt"
       fi
       ;;
     ollama)
