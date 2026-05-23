@@ -168,6 +168,11 @@ print_help() {
   echo "                     ⚠️  WARNING: loads the agent's full system prompt."
   echo "                     Only use with lightweight agents. For most cases,"
   echo "                     OPENCODE_VARIANT alone is sufficient."
+  echo "  REASONING          Reasoning effort for supported providers (default: unset)"
+  echo "                     Values: minimal, low, medium, high, max"
+  echo "                     ✅ opencode, codex, ollama"
+  echo "                     ⚠️  github (reasoning-capable models only)"
+  echo "                     ❌ claude, gemini (no CLI flag — use opencode as proxy)"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init               # Create sample config"
@@ -185,6 +190,7 @@ print_help() {
   echo "  GGA_TIMEOUT       Override timeout from config (seconds)"
   echo "  GGA_OPENCODE_VARIANT  Override OPENCODE_VARIANT from config"
   echo "  GGA_OPENCODE_AGENT    Override OPENCODE_AGENT from config"
+  echo "  GGA_REASONING     Override REASONING from config"
   echo ""
 }
 
@@ -312,6 +318,11 @@ cmd_config() {
   else
     echo -e "  OPENCODE_AGENT:    ${YELLOW}Not set (using default)${NC}"
   fi
+  if [[ -n "${REASONING:-}" ]]; then
+    echo -e "  REASONING:         ${CYAN}$REASONING${NC}"
+  else
+    echo -e "  REASONING:         ${YELLOW}Not set${NC}"
+  fi
   if [[ -n "${PR_BASE_BRANCH:-}" ]]; then
     echo -e "  PR_BASE_BRANCH:    ${CYAN}$PR_BASE_BRANCH${NC}"
   else
@@ -401,6 +412,13 @@ TIMEOUT="300"
 # Creates a custom lightweight agent in opencode.json for GGA.
 # Leave empty unless you know what you're doing.
 # OPENCODE_AGENT=""
+
+# Reasoning effort (applies to opencode, codex, ollama, github)
+# Controls how much the model "thinks" before responding.
+# Values: minimal, low, medium, high, max
+# Provider-specific vars (OPENCODE_VARIANT, etc.) take precedence.
+# Not supported for: claude, gemini — use PROVIDER="opencode" instead.
+# REASONING="high"
 
 # Base branch for --pr-mode (auto-detects main/master/develop if empty)
 # Default: auto-detect
