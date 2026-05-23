@@ -246,10 +246,23 @@ is_gemini_authenticated() {
 
 execute_codex() {
   local prompt="$1"
+  local flags=()
+  
+  # Provider-specific override
+  [[ -n "${CODEX_REASONING_EFFORT:-}" ]] && flags+=(--config "model_reasoning_effort=$CODEX_REASONING_EFFORT")
+  
+  # REASONING fallback
+  if [[ -z "${CODEX_REASONING_EFFORT:-}" && -n "${REASONING:-}" ]]; then
+    case "$REASONING" in
+      minimal|low)     flags+=(--config "model_reasoning_effort=low") ;;
+      medium)          flags+=(--config "model_reasoning_effort=medium") ;;
+      high)            flags+=(--config "model_reasoning_effort=high") ;;
+      max)             flags+=(--config "model_reasoning_effort=xhigh") ;;
+    esac
+  fi
   
   # Codex uses exec subcommand for non-interactive mode
-  # Using --output-last-message to get just the final response
-  codex exec "$prompt" 2>&1
+  codex exec "${flags[@]}" "$prompt" 2>&1
   return $?
 }
 
@@ -257,12 +270,18 @@ execute_opencode() {
   local model="$1"
   local prompt="$2"
   
-  # OpenCode CLI accepts prompt as positional argument
-  # opencode run [message..] - message is a positional array
+  # Optional variant and agent flags (GGA-prefixed takes precedence)
+  local flags=()
+  [[ -n "${GGA_OPENCODE_VARIANT:-}" ]] && flags+=(--variant "$GGA_OPENCODE_VARIANT")
+  [[ -z "${GGA_OPENCODE_VARIANT:-}" && -n "${OPENCODE_VARIANT:-}" ]] && flags+=(--variant "$OPENCODE_VARIANT")
+  [[ -z "${GGA_OPENCODE_VARIANT:-}" && -z "${OPENCODE_VARIANT:-}" && -n "${REASONING:-}" ]] && flags+=(--variant "$REASONING")
+  [[ -n "${GGA_OPENCODE_AGENT:-}" ]] && flags+=(--agent "$GGA_OPENCODE_AGENT")
+  [[ -z "${GGA_OPENCODE_AGENT:-}" && -n "${OPENCODE_AGENT:-}" ]] && flags+=(--agent "$OPENCODE_AGENT")
+  
   if [[ -n "$model" ]]; then
-    opencode run --model "$model" "$prompt" 2>&1
+    opencode run --model "$model" "${flags[@]}" -- "$prompt" 2>&1
   else
-    opencode run "$prompt" 2>&1
+    opencode run "${flags[@]}" -- "$prompt" 2>&1
   fi
   return $?
 }
@@ -370,10 +389,19 @@ execute_ollama_cli() {
   local model="$1"
   local prompt="$2"
   
+  # REASONING → --think mapping
+  local think_flag=""
+  if [[ -n "${REASONING:-}" ]]; then
+    case "$REASONING" in
+      minimal) think_flag="--think=false" ;;
+      low|medium|high|max) think_flag="--think=true" ;;
+    esac
+  fi
+  
   # Run ollama CLI, suppress stderr (spinner/progress), strip ANSI codes from stdout
   # The 2>/dev/null removes spinner and progress messages
   # The sed removes any remaining ANSI escape sequences
-  ollama run "$model" "$prompt" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'
+  ollama run ${think_flag:+"$think_flag"} "$model" "$prompt" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'
   return "${PIPESTATUS[0]}"
 }
 
@@ -543,17 +571,25 @@ execute_github_models() {
   # Build JSON payload safely using python3
   local json_payload
   if ! json_payload=$(printf '%s' "$prompt" | python3 -c "
-import sys, json
+import sys, json, os
 prompt = sys.stdin.read()
 model = sys.argv[1]
-payload = json.dumps({
+reasoning = os.environ.get('REASONING', '')
+payload_dict = {
     'model': model,
     'messages': [
         {'role': 'system', 'content': 'You are a helpful code review assistant.'},
         {'role': 'user', 'content': prompt}
     ],
     'temperature': 0.2
-})
+}
+if reasoning and reasoning in ('low', 'medium', 'high'):
+    payload_dict['reasoning_effort'] = reasoning
+elif reasoning == 'minimal':
+    payload_dict['reasoning_effort'] = 'low'
+elif reasoning == 'max':
+    payload_dict['reasoning_effort'] = 'high'
+payload = json.dumps(payload_dict)
 print(payload)
 " "$model" 2>&1); then
     echo "Error: Failed to build JSON payload" >&2
@@ -799,17 +835,24 @@ execute_provider_with_timeout() {
       execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
       ;;
     codex)
-      execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
+      execute_with_timeout "$timeout" "Codex" execute_codex "$prompt"
       ;;
     opencode)
       local model="${provider#*:}"
       if [[ "$model" == "$provider" ]]; then
         model=""
       fi
+      # Optional variant and agent flags (GGA-prefixed takes precedence)
+      local flags=()
+      [[ -n "${GGA_OPENCODE_VARIANT:-}" ]] && flags+=(--variant "$GGA_OPENCODE_VARIANT")
+      [[ -z "${GGA_OPENCODE_VARIANT:-}" && -n "${OPENCODE_VARIANT:-}" ]] && flags+=(--variant "$OPENCODE_VARIANT")
+      [[ -z "${GGA_OPENCODE_VARIANT:-}" && -z "${OPENCODE_VARIANT:-}" && -n "${REASONING:-}" ]] && flags+=(--variant "$REASONING")
+      [[ -n "${GGA_OPENCODE_AGENT:-}" ]] && flags+=(--agent "$GGA_OPENCODE_AGENT")
+      [[ -z "${GGA_OPENCODE_AGENT:-}" && -n "${OPENCODE_AGENT:-}" ]] && flags+=(--agent "$OPENCODE_AGENT")
       if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "${flags[@]}" -- "$prompt"
       else
-        execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" opencode run "${flags[@]}" -- "$prompt"
       fi
       ;;
     ollama)
@@ -822,6 +865,10 @@ execute_provider_with_timeout() {
       fi
 
       execute_with_timeout "$timeout" "Ollama ($model)" execute_ollama "$model" "$prompt"
+      ;;
+    github)
+      local model="${provider#*:}"
+      execute_with_timeout "$timeout" "GitHub Models ($model)" execute_github_models "$model" "$prompt"
       ;;
     lmstudio)
       local model="${provider#*:}"
