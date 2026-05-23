@@ -265,9 +265,9 @@ execute_opencode() {
   [[ -z "${GGA_OPENCODE_AGENT:-}" && -n "${OPENCODE_AGENT:-}" ]] && flags+=(--agent "$OPENCODE_AGENT")
   
   if [[ -n "$model" ]]; then
-    opencode run --model "$model" "${flags[@]}" "$prompt" 2>&1
+    opencode run --model "$model" "${flags[@]}" -- "$prompt" 2>&1
   else
-    opencode run "${flags[@]}" "$prompt" 2>&1
+    opencode run "${flags[@]}" -- "$prompt" 2>&1
   fi
   return $?
 }
@@ -822,9 +822,9 @@ execute_provider_with_timeout() {
       [[ -n "${GGA_OPENCODE_AGENT:-}" ]] && flags+=(--agent "$GGA_OPENCODE_AGENT")
       [[ -z "${GGA_OPENCODE_AGENT:-}" && -n "${OPENCODE_AGENT:-}" ]] && flags+=(--agent "$OPENCODE_AGENT")
       if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "${flags[@]}" "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "${flags[@]}" -- "$prompt"
       else
-        execute_with_timeout "$timeout" "OpenCode" opencode run "${flags[@]}" "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" opencode run "${flags[@]}" -- "$prompt"
       fi
       ;;
     ollama)
