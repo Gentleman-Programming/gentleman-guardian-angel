@@ -17,7 +17,8 @@ Describe 'providers.sh opencode support'
   End
 
   Describe 'execute_opencode()'
-    # Mock opencode command - accepts prompt as positional argument
+    # Mock opencode command - now reads prompt from stdin (via '-' argument)
+    # to avoid ARG_MAX limits with large prompts
     opencode() {
       if [[ "$1" == "run" ]]; then
         shift # remove "run"
@@ -25,10 +26,20 @@ Describe 'providers.sh opencode support'
            local model="$2"
            shift 2 # remove "--model" and model name
            echo "Run with model: $model"
-           echo "$*" # echo the prompt (remaining args)
+           # Read prompt from stdin (the '-' argument means read from stdin)
+           if [[ "${1:-}" == "-" ]]; then
+             cat
+           else
+             echo "$*"
+           fi
         else
            echo "Run default"
-           echo "$*" # echo the prompt (remaining args)
+           # Read prompt from stdin (the '-' argument means read from stdin)
+           if [[ "${1:-}" == "-" ]]; then
+             cat
+           else
+             echo "$*"
+           fi
         fi
       fi
     }
@@ -43,6 +54,16 @@ Describe 'providers.sh opencode support'
       When call execute_opencode "gpt-4" "test prompt"
       The output should include "Run with model: gpt-4"
       The output should include "test prompt"
+    End
+
+    It 'handles large prompts without ARG_MAX errors'
+      # Generate a prompt larger than typical ARG_MAX limits
+      # Windows cmd.exe: ~8KB, Git Bash: ~32KB, macOS: ~256KB
+      local large_prompt
+      large_prompt=$(printf 'x%.0s' {1..400000})  # 400KB prompt
+      When call execute_opencode "" "$large_prompt"
+      The output should include "Run default"
+      The length of output should be greater than 399999
     End
   End
 

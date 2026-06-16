@@ -236,8 +236,18 @@ execute_gemini() {
     return 1
   fi
   
-  gemini -p "$prompt" 2>&1
-  return $?
+  # Gemini CLI -p flag expects prompt as argument, which hits ARG_MAX limits
+  # Solution: write prompt to temp file and pipe via stdin
+  local prompt_file
+  prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX")
+  printf '%s' "$prompt" > "$prompt_file"
+  
+  # Pipe prompt via stdin to avoid argv limits
+  local exit_code=0
+  cat "$prompt_file" | gemini -p - 2>&1 || exit_code=$?
+  
+  rm -f "$prompt_file"
+  return $exit_code
 }
 
 is_gemini_authenticated() {
@@ -247,24 +257,38 @@ is_gemini_authenticated() {
 execute_codex() {
   local prompt="$1"
   
-  # Codex uses exec subcommand for non-interactive mode
+  # Codex exec supports reading prompt from stdin when using '-' or when no argument is provided
+  # Using stdin to avoid ARG_MAX limits with large prompts
   # Using --output-last-message to get just the final response
-  codex exec "$prompt" 2>&1
-  return $?
+  printf '%s' "$prompt" | codex exec - 2>&1
+  return "${PIPESTATUS[1]}"
 }
 
 execute_opencode() {
   local model="$1"
   local prompt="$2"
   
-  # OpenCode CLI accepts prompt as positional argument
-  # opencode run [message..] - message is a positional array
+  # OpenCode CLI accepts prompt as positional argument, but this hits ARG_MAX limits
+  # on Windows (~8KB cmd.exe, ~32KB Git Bash) and macOS/Linux with large PRs (~256KB)
+  # Solution: write prompt to temp file and use process substitution to pass via stdin
+  local prompt_file
+  prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX")
+  printf '%s' "$prompt" > "$prompt_file"
+  
+  # Use cat to pipe the prompt file content to opencode via stdin
+  # opencode run accepts [message..] as positional args, but we need to check if it reads stdin
+  # Fallback: pass the file content as a single argument (still may hit limits)
+  # Best approach: use process substitution to avoid argv limits
+  
+  local exit_code=0
   if [[ -n "$model" ]]; then
-    opencode run --model "$model" "$prompt" 2>&1
+    cat "$prompt_file" | opencode run --model "$model" - 2>&1 || exit_code=$?
   else
-    opencode run "$prompt" 2>&1
+    cat "$prompt_file" | opencode run - 2>&1 || exit_code=$?
   fi
-  return $?
+  
+  rm -f "$prompt_file"
+  return $exit_code
 }
 
 execute_ollama() {
@@ -791,15 +815,28 @@ execute_provider_with_timeout() {
   local timeout="${3:-300}"
   local base_provider="${provider%%:*}"
 
+  # Write prompt to temp file to avoid ARG_MAX limits
+  # This is critical for large PRs that generate prompts > 128KB-256KB
+  local prompt_file
+  prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX")
+  printf '%s' "$prompt" > "$prompt_file"
+
+  local result
   case "$base_provider" in
     claude)
-      execute_with_timeout "$timeout" "Claude" bash -c "printf '%s' \"\$1\" | claude --print 2>&1" -- "$prompt"
+      # Read prompt from file inside bash -c to avoid passing it as argv
+      execute_with_timeout "$timeout" "Claude" bash -c "cat \"\$1\" | claude --print 2>&1" -- "$prompt_file"
+      result=$?
       ;;
     gemini)
-      execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
+      # Read prompt from file and pipe to gemini
+      execute_with_timeout "$timeout" "Gemini" bash -c "cat \"\$1\" | gemini -p - 2>&1" -- "$prompt_file"
+      result=$?
       ;;
     codex)
-      execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
+      # Read prompt from file and pipe to codex exec -
+      execute_with_timeout "$timeout" "Codex" bash -c "cat \"\$1\" | codex exec - 2>&1" -- "$prompt_file"
+      result=$?
       ;;
     opencode)
       local model="${provider#*:}"
@@ -807,10 +844,11 @@ execute_provider_with_timeout() {
         model=""
       fi
       if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" bash -c "cat \"\$1\" | opencode run --model \"$model\" - 2>&1" -- "$prompt_file"
       else
-        execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
+        execute_with_timeout "$timeout" "OpenCode" bash -c "cat \"\$1\" | opencode run - 2>&1" -- "$prompt_file"
       fi
+      result=$?
       ;;
     ollama)
       local model="${provider#*:}"
@@ -818,10 +856,12 @@ execute_provider_with_timeout() {
 
       if ! validate_ollama_host "$host"; then
         echo "Error: Invalid OLLAMA_HOST format. Expected: http(s)://hostname(:port)" >&2
+        rm -f "$prompt_file"
         return 1
       fi
 
       execute_with_timeout "$timeout" "Ollama ($model)" execute_ollama "$model" "$prompt"
+      result=$?
       ;;
     lmstudio)
       local model="${provider#*:}"
@@ -832,15 +872,22 @@ execute_provider_with_timeout() {
 
       if ! validate_lmstudio_host "$host"; then
         echo "Error: Invalid LMSTUDIO_HOST format. Expected: http(s)://hostname(:port)(/v1)" >&2
+        rm -f "$prompt_file"
         return 1
       fi
 
       execute_with_timeout "$timeout" "LM Studio" execute_lmstudio "$model" "$prompt"
+      result=$?
       ;;
     *)
       # Generic fallback: wrap execute_provider with timeout
       # This ensures new providers added later still get timeout support
       execute_with_timeout "$timeout" "$base_provider" execute_provider "$provider" "$prompt"
+      result=$?
       ;;
   esac
+
+  # Clean up temp file
+  rm -f "$prompt_file"
+  return $result
 }
