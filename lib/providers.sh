@@ -815,40 +815,48 @@ execute_provider_with_timeout() {
   local timeout="${3:-300}"
   local base_provider="${provider%%:*}"
 
-  # Write prompt to temp file to avoid ARG_MAX limits
-  # This is critical for large PRs that generate prompts > 128KB-256KB
-  local prompt_file
-  prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX")
-  printf '%s' "$prompt" > "$prompt_file"
-
   local result
   case "$base_provider" in
-    claude)
-      # Read prompt from file inside bash -c to avoid passing it as argv
-      execute_with_timeout "$timeout" "Claude" bash -c "cat \"\$1\" | claude --print 2>&1" -- "$prompt_file"
-      result=$?
-      ;;
-    gemini)
-      # Read prompt from file and pipe to gemini
-      execute_with_timeout "$timeout" "Gemini" bash -c "cat \"\$1\" | gemini -p - 2>&1" -- "$prompt_file"
-      result=$?
-      ;;
-    codex)
-      # Read prompt from file and pipe to codex exec -
-      execute_with_timeout "$timeout" "Codex" bash -c "cat \"\$1\" | codex exec - 2>&1" -- "$prompt_file"
-      result=$?
-      ;;
-    opencode)
-      local model="${provider#*:}"
-      if [[ "$model" == "$provider" ]]; then
-        model=""
-      fi
-      if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "OpenCode" bash -c "cat \"\$1\" | opencode run --model \"$model\" - 2>&1" -- "$prompt_file"
-      else
-        execute_with_timeout "$timeout" "OpenCode" bash -c "cat \"\$1\" | opencode run - 2>&1" -- "$prompt_file"
-      fi
-      result=$?
+    claude|gemini|codex|opencode)
+      # Write prompt to temp file to avoid ARG_MAX limits
+      # This is critical for large PRs that generate prompts > 128KB-256KB
+      # Only create temp file for CLI providers that need it (not for API-based providers)
+      local prompt_file
+      prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX")
+      printf '%s' "$prompt" > "$prompt_file"
+
+      case "$base_provider" in
+        claude)
+          # Read prompt from file inside bash -c to avoid passing it as argv
+          execute_with_timeout "$timeout" "Claude" bash -c "cat \"\$1\" | claude --print 2>&1" -- "$prompt_file"
+          result=$?
+          ;;
+        gemini)
+          # Read prompt from file and pipe to gemini
+          execute_with_timeout "$timeout" "Gemini" bash -c "cat \"\$1\" | gemini -p - 2>&1" -- "$prompt_file"
+          result=$?
+          ;;
+        codex)
+          # Read prompt from file and pipe to codex exec -
+          execute_with_timeout "$timeout" "Codex" bash -c "cat \"\$1\" | codex exec - 2>&1" -- "$prompt_file"
+          result=$?
+          ;;
+        opencode)
+          local model="${provider#*:}"
+          if [[ "$model" == "$provider" ]]; then
+            model=""
+          fi
+          if [[ -n "$model" ]]; then
+            execute_with_timeout "$timeout" "OpenCode" bash -c "cat \"\$1\" | opencode run --model \"$model\" - 2>&1" -- "$prompt_file"
+          else
+            execute_with_timeout "$timeout" "OpenCode" bash -c "cat \"\$1\" | opencode run - 2>&1" -- "$prompt_file"
+          fi
+          result=$?
+          ;;
+      esac
+
+      # Clean up temp file
+      rm -f "$prompt_file"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -856,7 +864,6 @@ execute_provider_with_timeout() {
 
       if ! validate_ollama_host "$host"; then
         echo "Error: Invalid OLLAMA_HOST format. Expected: http(s)://hostname(:port)" >&2
-        rm -f "$prompt_file"
         return 1
       fi
 
@@ -872,7 +879,6 @@ execute_provider_with_timeout() {
 
       if ! validate_lmstudio_host "$host"; then
         echo "Error: Invalid LMSTUDIO_HOST format. Expected: http(s)://hostname(:port)(/v1)" >&2
-        rm -f "$prompt_file"
         return 1
       fi
 
@@ -887,7 +893,5 @@ execute_provider_with_timeout() {
       ;;
   esac
 
-  # Clean up temp file
-  rm -f "$prompt_file"
   return $result
 }

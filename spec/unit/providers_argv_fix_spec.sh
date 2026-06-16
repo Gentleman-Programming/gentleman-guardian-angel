@@ -111,6 +111,13 @@ Describe 'providers.sh ARG_MAX handling'
       The output should include "bash -c"
     End
 
+    It 'writes prompt to temp file for gemini'
+      When call execute_provider_with_timeout "gemini" "test prompt" 300
+      The output should include "TIMEOUT:300:Gemini"
+      The output should include "bash -c"
+      The output should include "gemini -p -"
+    End
+
     It 'handles large prompts without ARG_MAX errors'
       local large_prompt
       large_prompt=$(printf 'x%.0s' {1..400000})  # 400KB > ARG_MAX
@@ -121,6 +128,10 @@ Describe 'providers.sh ARG_MAX handling'
     End
 
     It 'cleans up temp file after execution'
+      local test_temp
+      test_temp="$(mktemp -d)"
+      TEMP="$test_temp"
+
       # Count temp files before
       local before_count
       before_count=$(ls -1 "${TEMP:-${TMPDIR:-/tmp}}"/gga_prompt.* 2>/dev/null | wc -l || echo 0)
@@ -133,6 +144,7 @@ Describe 'providers.sh ARG_MAX handling'
       
       # Should be the same (temp file was cleaned up)
       The value "$after_count" should eq "$before_count"
+      rm -rf "$test_temp"
     End
   End
 
