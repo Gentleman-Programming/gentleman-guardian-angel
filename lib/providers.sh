@@ -847,7 +847,7 @@ execute_provider_with_timeout() {
             model=""
           fi
           if [[ -n "$model" ]]; then
-            execute_with_timeout "$timeout" "OpenCode" bash -c "cat \"\$1\" | opencode run --model \"$model\" - 2>&1" -- "$prompt_file"
+            execute_with_timeout "$timeout" "OpenCode" bash -c 'cat "$1" | opencode run --model "$2" - 2>&1' -- "$prompt_file" "$model"
           else
             execute_with_timeout "$timeout" "OpenCode" bash -c "cat \"\$1\" | opencode run - 2>&1" -- "$prompt_file"
           fi
