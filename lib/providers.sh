@@ -785,32 +785,74 @@ execute_with_timeout() {
 
 # Execute provider with timeout and progress feedback
 # Usage: execute_provider_with_timeout <provider> <prompt> <timeout>
+#
+# For CLI providers (claude, gemini, codex, opencode), the prompt is written to a
+# temp file and piped via stdin to avoid ARG_MAX limits on Windows (~8KB-32KB),
+# macOS (~256KB), and Linux (~128KB-2MB). Only the file path (short string) is
+# passed as an argument to execute_with_timeout, never the prompt content.
 execute_provider_with_timeout() {
   local provider="$1"
   local prompt="$2"
   local timeout="${3:-300}"
   local base_provider="${provider%%:*}"
+  local result=0
 
   case "$base_provider" in
-    claude)
-      execute_with_timeout "$timeout" "Claude" bash -c "printf '%s' \"\$1\" | claude --print 2>&1" -- "$prompt"
-      ;;
-    gemini)
-      execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
-      ;;
-    codex)
-      execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
-      ;;
-    opencode)
-      local model="${provider#*:}"
-      if [[ "$model" == "$provider" ]]; then
-        model=""
-      fi
-      if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "$prompt"
-      else
-        execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
-      fi
+    claude|gemini|codex|opencode)
+      # Write prompt to temp file ONCE to avoid ARG_MAX limits.
+      # This is critical for large PRs that generate prompts > 128KB-256KB.
+      # Only CLI providers need this; API-based providers (ollama, lmstudio)
+      # use curl/HTTP and don't have argv limits.
+      local prompt_file
+      prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX")
+      printf '%s' "$prompt" > "$prompt_file"
+
+      # Ensure cleanup on exit (success, error, or signal).
+      # trap RETURN fires when the function returns for any reason.
+      trap 'rm -f "$prompt_file"' RETURN
+
+      case "$base_provider" in
+        claude)
+          # cat reads from file (path passed as $1), pipes to claude via stdin.
+          # Only the file path (~50 chars) is in argv, not the prompt content.
+          execute_with_timeout "$timeout" "Claude" \
+            bash -c 'cat "$1" | claude --print 2>&1' _ "$prompt_file"
+          result=$?
+          ;;
+        gemini)
+          # gemini -p - reads prompt from stdin
+          execute_with_timeout "$timeout" "Gemini" \
+            bash -c 'cat "$1" | gemini -p - 2>&1' _ "$prompt_file"
+          result=$?
+          ;;
+        codex)
+          # codex exec - reads prompt from stdin
+          execute_with_timeout "$timeout" "Codex" \
+            bash -c 'cat "$1" | codex exec - 2>&1' _ "$prompt_file"
+          result=$?
+          ;;
+        opencode)
+          local model="${provider#*:}"
+          if [[ "$model" == "$provider" ]]; then
+            model=""
+          fi
+          if [[ -n "$model" ]]; then
+            # Pass model as $2 to avoid shell injection (not interpolated in bash -c string).
+            # opencode run (without positional message args) reads from stdin automatically.
+            # NOTE: Do NOT use '-' as opencode doesn't support explicit stdin flag.
+            execute_with_timeout "$timeout" "OpenCode" \
+              bash -c 'cat "$1" | opencode run --model "$2" 2>&1' _ "$prompt_file" "$model"
+          else
+            execute_with_timeout "$timeout" "OpenCode" \
+              bash -c 'cat "$1" | opencode run 2>&1' _ "$prompt_file"
+          fi
+          result=$?
+          ;;
+      esac
+
+      # Cleanup temp file (also handled by trap, but explicit is clearer)
+      rm -f "$prompt_file"
+      trap - RETURN
       ;;
     ollama)
       local model="${provider#*:}"
@@ -843,4 +885,6 @@ execute_provider_with_timeout() {
       execute_with_timeout "$timeout" "$base_provider" execute_provider "$provider" "$prompt"
       ;;
   esac
+
+  return $result
 }
