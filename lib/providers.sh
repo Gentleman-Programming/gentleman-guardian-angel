@@ -864,6 +864,7 @@ execute_provider_with_timeout() {
       fi
 
       execute_with_timeout "$timeout" "Ollama ($model)" execute_ollama "$model" "$prompt"
+      result=$?
       ;;
     lmstudio)
       local model="${provider#*:}"
@@ -878,11 +879,13 @@ execute_provider_with_timeout() {
       fi
 
       execute_with_timeout "$timeout" "LM Studio" execute_lmstudio "$model" "$prompt"
+      result=$?
       ;;
     *)
       # Generic fallback: wrap execute_provider with timeout
       # This ensures new providers added later still get timeout support
       execute_with_timeout "$timeout" "$base_provider" execute_provider "$provider" "$prompt"
+      result=$?
       ;;
   esac
 

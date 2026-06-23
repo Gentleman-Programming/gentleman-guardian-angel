@@ -112,6 +112,8 @@ Describe 'providers.sh ARG_MAX handling'
       after_count=$(ls -1 "${TEMP}/gga_prompt."* 2>/dev/null | wc -l || echo 0)
 
       The value "$after_count" should eq "$before_count"
+      # Exit code should be propagated
+      The status should be failure
       rm -rf "$test_temp"
     End
 
@@ -148,6 +150,47 @@ Describe 'providers.sh ARG_MAX handling'
 
       When call execute_provider_with_timeout "lmstudio:llama-3" "test prompt" 300
       The output should include "LMSTUDIO_CALLED:llama-3:test prompt"
+    End
+
+    It 'propagates exit code for ollama'
+      # Mock execute_with_timeout to fail
+      execute_with_timeout() {
+        return 42
+      }
+      execute_ollama() {
+        echo "OLLAMA_CALLED"
+      }
+      validate_ollama_host() { return 0; }
+
+      When call execute_provider_with_timeout "ollama:llama3" "test prompt" 300
+      The status should eq 42
+    End
+
+    It 'propagates exit code for lmstudio'
+      # Mock execute_with_timeout to fail
+      execute_with_timeout() {
+        return 42
+      }
+      execute_lmstudio() {
+        echo "LMSTUDIO_CALLED"
+      }
+      validate_lmstudio_host() { return 0; }
+
+      When call execute_provider_with_timeout "lmstudio:llama-3" "test prompt" 300
+      The status should eq 42
+    End
+
+    It 'propagates exit code for generic fallback'
+      # Mock execute_with_timeout to fail
+      execute_with_timeout() {
+        return 42
+      }
+      execute_provider() {
+        echo "FALLBACK_CALLED"
+      }
+
+      When call execute_provider_with_timeout "unknown-provider" "test prompt" 300
+      The status should eq 42
     End
   End
 End
