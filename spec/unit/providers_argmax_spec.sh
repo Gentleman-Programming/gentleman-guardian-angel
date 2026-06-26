@@ -87,7 +87,7 @@ Describe 'providers.sh ARG_MAX handling'
       after_count=$(ls -1 "${TEMP}/gga_prompt."* 2>/dev/null | wc -l || echo 0)
 
       # Should be the same (temp file was cleaned up)
-      The value "$after_count" should eq "$before_count"
+      Assert [ "$after_count" -eq "$before_count" ]
       rm -rf "$test_temp"
     End
 
@@ -111,7 +111,7 @@ Describe 'providers.sh ARG_MAX handling'
       local after_count
       after_count=$(ls -1 "${TEMP}/gga_prompt."* 2>/dev/null | wc -l || echo 0)
 
-      The value "$after_count" should eq "$before_count"
+      Assert [ "$after_count" -eq "$before_count" ]
       # Exit code should be propagated
       The status should be failure
       rm -rf "$test_temp"

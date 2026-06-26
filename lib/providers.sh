@@ -815,18 +815,21 @@ execute_provider_with_timeout() {
         claude)
           # cat reads from file (path passed as $1), pipes to claude via stdin.
           # Only the file path (~50 chars) is in argv, not the prompt content.
+          # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Claude" \
             bash -c 'cat "$1" | claude --print 2>&1' _ "$prompt_file"
           result=$?
           ;;
         gemini)
           # gemini -p - reads prompt from stdin
+          # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Gemini" \
             bash -c 'cat "$1" | gemini -p - 2>&1' _ "$prompt_file"
           result=$?
           ;;
         codex)
           # codex exec - reads prompt from stdin
+          # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Codex" \
             bash -c 'cat "$1" | codex exec - 2>&1' _ "$prompt_file"
           result=$?
@@ -840,9 +843,11 @@ execute_provider_with_timeout() {
             # Pass model as $2 to avoid shell injection (not interpolated in bash -c string).
             # opencode run (without positional message args) reads from stdin automatically.
             # NOTE: Do NOT use '-' as opencode doesn't support explicit stdin flag.
+            # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "OpenCode" \
               bash -c 'cat "$1" | opencode run --model "$2" 2>&1' _ "$prompt_file" "$model"
           else
+            # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "OpenCode" \
               bash -c 'cat "$1" | opencode run 2>&1' _ "$prompt_file"
           fi
