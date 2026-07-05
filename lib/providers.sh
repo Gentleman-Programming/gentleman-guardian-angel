@@ -801,7 +801,8 @@ execute_provider_with_timeout() {
       _claude_tmpfile=$(mktemp) || { echo "gga: mktemp failed" >&2; return 1; }
       printf '%s' "$prompt" > "$_claude_tmpfile"
       execute_with_timeout "$timeout" "Claude" \
-        bash -c 'claude --print 2>&1 < "$1"; rm -f "$1"' -- "$_claude_tmpfile"
+        bash -c 'claude --print 2>&1 < "$1"' -- "$_claude_tmpfile"
+      rm -f "$_claude_tmpfile"
       ;;
     gemini)
       execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
