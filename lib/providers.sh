@@ -802,7 +802,9 @@ execute_provider_with_timeout() {
       printf '%s' "$prompt" > "$_claude_tmpfile"
       execute_with_timeout "$timeout" "Claude" \
         bash -c 'claude --print 2>&1 < "$1"' -- "$_claude_tmpfile"
+      local _claude_status=$?
       rm -f "$_claude_tmpfile"
+      return $_claude_status
       ;;
     gemini)
       execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
