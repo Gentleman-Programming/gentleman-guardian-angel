@@ -793,7 +793,15 @@ execute_provider_with_timeout() {
 
   case "$base_provider" in
     claude)
-      execute_with_timeout "$timeout" "Claude" bash -c "printf '%s' \"\$1\" | claude --print 2>&1" -- "$prompt"
+      # Write prompt to a temp file to avoid ARG_MAX limits when the review
+      # payload is large. Passing $prompt as a bash argv ($1) fails on Linux
+      # (~2 MB ARG_MAX) and macOS when staged files are large.
+      # See: https://github.com/Gentleman-Programming/gentleman-guardian-angel/issues/78
+      local _claude_tmpfile
+      _claude_tmpfile=$(mktemp) || { echo "gga: mktemp failed" >&2; return 1; }
+      printf '%s' "$prompt" > "$_claude_tmpfile"
+      execute_with_timeout "$timeout" "Claude" \
+        bash -c 'claude --print 2>&1 < "$1"; rm -f "$1"' -- "$_claude_tmpfile"
       ;;
     gemini)
       execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
