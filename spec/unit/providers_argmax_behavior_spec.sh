@@ -94,7 +94,25 @@ fi
 cat
 FAKE
 
-    chmod +x "$TEST_BIN_DIR/claude" "$TEST_BIN_DIR/gemini" "$TEST_BIN_DIR/codex" "$TEST_BIN_DIR/opencode" "$TEST_BIN_DIR/cursor-agent"
+    cat > "$TEST_BIN_DIR/kilo" <<'FAKE'
+#!/usr/bin/env bash
+if [[ "$1" != "run" || "$2" != "--auto" ]]; then
+  echo "unexpected kilo args: $*" >&2
+  exit 64
+fi
+shift 2
+if [[ "${1:-}" == "--model" ]]; then
+  echo "KILO_MODEL:$2"
+  shift 2
+fi
+if [[ $# -ne 0 ]]; then
+  echo "unexpected kilo positional prompt: $*" >&2
+  exit 64
+fi
+cat
+FAKE
+
+    chmod +x "$TEST_BIN_DIR/claude" "$TEST_BIN_DIR/gemini" "$TEST_BIN_DIR/codex" "$TEST_BIN_DIR/opencode" "$TEST_BIN_DIR/cursor-agent" "$TEST_BIN_DIR/kilo"
   }
   BeforeEach 'setup'
 
@@ -165,6 +183,23 @@ FAKE
     The output should include "line 1"
     The output should include "line 2"
     The stderr should include "Waiting for Cursor Agent"
+  End
+
+  It 'passes the full prompt to kilo via stdin without positional prompt args'
+    When call execute_provider_with_timeout "kilo" $'line 1\nline 2' 5
+    The status should be success
+    The output should include "line 1"
+    The output should include "line 2"
+    The stderr should include "Waiting for Kilo"
+  End
+
+  It 'passes kilo model separately and prompt via stdin'
+    When call execute_provider_with_timeout "kilo:anthropic/claude-sonnet-4-5" $'line 1\nline 2' 5
+    The status should be success
+    The output should include "KILO_MODEL:anthropic/claude-sonnet-4-5"
+    The output should include "line 1"
+    The output should include "line 2"
+    The stderr should include "Waiting for Kilo"
   End
 
   It 'passes opencode variant and agent flags while keeping prompt on stdin'

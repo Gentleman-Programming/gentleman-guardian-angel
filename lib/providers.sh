@@ -9,9 +9,11 @@
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
 # - cursor: Cursor Agent CLI (optional :model)
+# - kilo: Kilo CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
 # - lmstudio[:model]: LM Studio (optional model)
 # - github:<model>: GitHub Models (OpenAI-compatible API)
+# - minimax[:model]: MiniMax OpenAI-compatible API
 # ============================================================================
 
 # Colors (in case sourced independently)
@@ -77,6 +79,16 @@ validate_provider() {
         echo ""
         echo "Install Cursor Agent CLI:"
         echo "  curl https://cursor.com/install -fsS | bash"
+        echo ""
+        return 1
+      fi
+      ;;
+    kilo)
+      if ! command -v kilo &> /dev/null; then
+        echo -e "${RED}❌ Kilo CLI not found${NC}"
+        echo ""
+        echo "Install Kilo CLI:"
+        echo "  npm install -g @kilocode/cli"
         echo ""
         return 1
       fi
@@ -158,6 +170,36 @@ validate_provider() {
         return 1
       fi
       ;;
+    minimax)
+      if [[ -z "${MINIMAX_API_KEY:-}" ]]; then
+        echo -e "${RED}❌ MINIMAX_API_KEY not set${NC}"
+        echo ""
+        echo "Get your API key from:"
+        echo "  https://platform.minimax.io/user-center/basic-information/interface-key"
+        echo ""
+        echo "Then export it:"
+        echo "  export MINIMAX_API_KEY=your-api-key"
+        echo ""
+        return 1
+      fi
+      if ! command -v curl &> /dev/null; then
+        echo -e "${RED}❌ curl not found${NC}"
+        echo ""
+        echo "Install curl:"
+        echo "  # Most systems have it pre-installed"
+        echo "  # Ubuntu/Debian: sudo apt-get install curl"
+        echo "  # macOS: brew install curl"
+        echo ""
+        return 1
+      fi
+      if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}❌ python3 not found${NC}"
+        echo ""
+        echo "MiniMax response parsing requires python3."
+        echo ""
+        return 1
+      fi
+      ;;
     *)
       echo -e "${RED}❌ Unknown provider: $provider${NC}"
       echo ""
@@ -167,9 +209,11 @@ validate_provider() {
       echo "  - codex"
       echo "  - opencode"
       echo "  - cursor[:model]"
+      echo "  - kilo[:model]"
       echo "  - ollama:<model>"
       echo "  - lmstudio[:model]"
       echo "  - github:<model>"
+      echo "  - minimax[:model]"
       echo ""
       return 1
       ;;
@@ -211,6 +255,13 @@ execute_provider() {
       fi
       execute_cursor "$model" "$prompt"
       ;;
+    kilo)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_kilo "$model" "$prompt"
+      ;;
     ollama)
       local model="${provider#*:}"
       execute_ollama "$model" "$prompt"
@@ -225,6 +276,13 @@ execute_provider() {
     github)
       local model="${provider#*:}"
       execute_github_models "$model" "$prompt"
+      ;;
+    minimax)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        model="$MINIMAX_DEFAULT_MODEL"
+      fi
+      execute_minimax "$model" "$prompt"
       ;;
   esac
 }
@@ -346,6 +404,20 @@ execute_cursor() {
     printf '%s' "$prompt" | "$cursor_cmd" -p --model "$model" --output-format text 2>&1
   else
     printf '%s' "$prompt" | "$cursor_cmd" -p --output-format text 2>&1
+  fi
+  return "${PIPESTATUS[1]}"
+}
+
+execute_kilo() {
+  local model="$1"
+  local prompt="$2"
+
+  # Kilo CLI reads stdin when no positional message is passed.
+  # The timeout path also uses stdin to avoid ARG_MAX for normal GGA runs.
+  if [[ -n "$model" ]]; then
+    printf '%s' "$prompt" | kilo run --auto --model "$model" 2>&1
+  else
+    printf '%s' "$prompt" | kilo run --auto 2>&1
   fi
   return "${PIPESTATUS[1]}"
 }
@@ -716,6 +788,116 @@ except (KeyError, IndexError, TypeError) as e:
 }
 
 # ============================================================================
+# MiniMax Implementation
+# ============================================================================
+
+MINIMAX_ENDPOINT="https://api.minimax.io/v1/chat/completions"
+MINIMAX_DEFAULT_MODEL="MiniMax-M3"
+
+execute_minimax() {
+  local model="$1"
+  local prompt="$2"
+
+  if [[ -z "$model" ]]; then
+    model="$MINIMAX_DEFAULT_MODEL"
+  fi
+
+  local api_key="${MINIMAX_API_KEY:-}"
+  if [[ -z "$api_key" ]]; then
+    echo "Error: MINIMAX_API_KEY not set" >&2
+    return 1
+  fi
+
+  local json_payload
+  if ! json_payload=$(printf '%s' "$prompt" | python3 -c "
+import sys, json
+prompt = sys.stdin.read()
+model = sys.argv[1]
+payload = json.dumps({
+    'model': model,
+    'messages': [
+        {'role': 'system', 'content': 'You are a helpful code review assistant.'},
+        {'role': 'user', 'content': prompt}
+    ],
+    'temperature': 0.2,
+    'stream': False
+})
+print(payload)
+" "$model" 2>&1); then
+    echo "Error: Failed to build JSON payload" >&2
+    echo "$json_payload" >&2
+    return 1
+  fi
+
+  local curl_config_file
+  if ! curl_config_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_minimax_curl.XXXXXX"); then
+    echo "Error: Failed to create temporary MiniMax curl config" >&2
+    return 1
+  fi
+  chmod 600 "$curl_config_file" 2>/dev/null || true
+  if ! {
+    printf '%s\n' 'header = "Content-Type: application/json"'
+    printf 'header = "Authorization: Bearer %s"\n' "$api_key"
+  } > "$curl_config_file"; then
+    echo "Error: Failed to write temporary MiniMax curl config" >&2
+    rm -f "$curl_config_file"
+    return 1
+  fi
+
+  local api_response
+  api_response=$(printf '%s' "$json_payload" | curl -sS \
+    --config "$curl_config_file" \
+    --data-binary @- \
+    "$MINIMAX_ENDPOINT" 2>&1)
+
+  local curl_status=$?
+  rm -f "$curl_config_file"
+  if [[ $curl_status -ne 0 ]]; then
+    echo "Error: Failed to connect to MiniMax API" >&2
+    echo "$api_response" >&2
+    return 1
+  fi
+
+  printf '%s' "$api_response" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if 'error' in data:
+        error = data['error']
+        if isinstance(error, dict):
+            msg = error.get('message') or error.get('status_msg') or str(error)
+        else:
+            msg = str(error)
+        print(f'Error: {msg}', file=sys.stderr)
+        sys.exit(1)
+    if 'base_resp' in data and isinstance(data['base_resp'], dict):
+        base_resp = data['base_resp']
+        status_code = base_resp.get('status_code')
+        if status_code not in (None, 0):
+            msg = base_resp.get('status_msg', 'Unknown error from MiniMax')
+            print(f'Error: {msg}', file=sys.stderr)
+            sys.exit(1)
+    choices = data.get('choices', [])
+    if not choices:
+        print('Error: Unexpected response format from MiniMax', file=sys.stderr)
+        sys.exit(1)
+    content = choices[0].get('message', {}).get('content', '')
+    if content:
+        print(content)
+    else:
+        print('Error: Empty response from MiniMax', file=sys.stderr)
+        sys.exit(1)
+except json.JSONDecodeError as e:
+    print(f'Error: Invalid JSON response from MiniMax: {e}', file=sys.stderr)
+    sys.exit(1)
+except (KeyError, IndexError, TypeError) as e:
+    print('Error: Unexpected response format from MiniMax', file=sys.stderr)
+    sys.exit(1)
+"
+  return $?
+}
+
+# ============================================================================
 # Provider Info
 # ============================================================================
 
@@ -764,6 +946,14 @@ get_provider_info() {
         echo "Cursor Agent CLI (model: $model)"
       fi
       ;;
+    kilo)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        echo "Kilo CLI"
+      else
+        echo "Kilo CLI (model: $model)"
+      fi
+      ;;
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
@@ -780,6 +970,13 @@ get_provider_info() {
       local model="${provider#*:}"
       echo "GitHub Models (model: $model)"
       ;;
+    minimax)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        model="$MINIMAX_DEFAULT_MODEL"
+      fi
+      echo "MiniMax (model: $model)"
+      ;;
     *)
       echo "Unknown provider"
       ;;
@@ -789,6 +986,29 @@ get_provider_info() {
 # ============================================================================
 # Timeout Wrapper with Progress Feedback
 # ============================================================================
+
+collect_process_tree() {
+  local root_pid="$1"
+  local child
+
+  echo "$root_pid"
+  if command -v pgrep >/dev/null 2>&1; then
+    while IFS= read -r child; do
+      [[ -n "$child" ]] || continue
+      collect_process_tree "$child"
+    done < <(pgrep -P "$root_pid" 2>/dev/null || true)
+  fi
+}
+
+kill_process_list() {
+  local signal="$1"
+  shift
+  local pid
+
+  for pid in "$@"; do
+    kill "-$signal" "$pid" 2>/dev/null || true
+  done
+}
 
 # Execute a command with timeout and progress feedback
 # Usage: execute_with_timeout <timeout_seconds> <provider_name> <command...>
@@ -834,10 +1054,16 @@ execute_with_timeout() {
     local elapsed=$((SECONDS - start_time))
 
     if [[ $elapsed -ge $timeout_seconds ]]; then
-      # Timeout reached - kill the process tree
-      kill -TERM "$cmd_pid" 2>/dev/null || true
+      # Timeout reached - kill the process tree. Snapshot descendants before
+      # TERM so ignored signals or a fast-exiting wrapper cannot reparent child
+      # CLIs before the KILL pass.
+      local -a process_tree=()
+      while IFS= read -r tree_pid; do
+        [[ -n "$tree_pid" ]] && process_tree+=("$tree_pid")
+      done < <(collect_process_tree "$cmd_pid")
+      kill_process_list TERM "${process_tree[@]}"
       sleep 0.5
-      kill -KILL "$cmd_pid" 2>/dev/null || true
+      kill_process_list KILL "${process_tree[@]}"
       wait "$cmd_pid" 2>/dev/null || true
 
       # Clear spinner line if in TTY mode
@@ -911,7 +1137,7 @@ execute_with_timeout() {
 # Execute provider with timeout and progress feedback
 # Usage: execute_provider_with_timeout <provider> <prompt> <timeout>
 #
-# For CLI providers (claude, gemini, codex, opencode, cursor), the prompt is written to a
+# For CLI providers (claude, gemini, codex, opencode, cursor, kilo), the prompt is written to a
 # temp file and piped via stdin to avoid ARG_MAX limits on Windows (~8KB-32KB),
 # macOS (~256KB), and Linux (~128KB-2MB). Only the file path (short string) is
 # passed as an argument to execute_with_timeout, never the prompt content.
@@ -923,7 +1149,7 @@ execute_provider_with_timeout() {
   local result=0
 
   case "$base_provider" in
-    claude|gemini|codex|opencode|cursor)
+    claude|gemini|codex|opencode|cursor|kilo)
       # Write prompt to temp file ONCE to avoid ARG_MAX limits.
       # This is critical for large PRs that generate prompts > 128KB-256KB.
       # Only CLI providers are handled here. API-based providers keep their
@@ -1027,6 +1253,23 @@ execute_provider_with_timeout() {
           fi
           result=$?
           ;;
+        kilo)
+          local model="${provider#*:}"
+          if [[ "$model" == "$provider" ]]; then
+            model=""
+          fi
+          if [[ -n "$model" ]]; then
+            # Kilo run reads stdin when no positional message args are passed.
+            # shellcheck disable=SC2016
+            execute_with_timeout "$timeout" "Kilo" \
+              bash -c 'exec kilo run --auto --model "$2" < "$1"' _ "$prompt_file" "$model"
+          else
+            # shellcheck disable=SC2016
+            execute_with_timeout "$timeout" "Kilo" \
+              bash -c 'exec kilo run --auto < "$1"' _ "$prompt_file"
+          fi
+          result=$?
+          ;;
       esac
 
       # Cleanup temp file (also handled by trap, but explicit is clearer)
@@ -1058,6 +1301,15 @@ execute_provider_with_timeout() {
       fi
 
       execute_with_timeout "$timeout" "LM Studio" execute_lmstudio "$model" "$prompt"
+      result=$?
+      ;;
+    minimax)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        model="$MINIMAX_DEFAULT_MODEL"
+      fi
+
+      execute_with_timeout "$timeout" "MiniMax ($model)" execute_minimax "$model" "$prompt"
       result=$?
       ;;
     *)

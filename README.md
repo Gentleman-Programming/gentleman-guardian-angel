@@ -4,8 +4,8 @@
 
 <p align="center">
   <strong>Provider-agnostic code review using AI</strong><br>
-  Use Claude, Gemini, Codex, OpenCode, Cursor Agent, Ollama, LM Studio, GitHub Models, or any AI to enforce your coding standards.<br>
-  Zero dependencies. Pure Bash. Works everywhere.
+  Use Claude, Gemini, Codex, OpenCode, Cursor Agent, Kilo, Ollama, LM Studio, GitHub Models, MiniMax, or any AI to enforce your coding standards.<br>
+  Pure Bash core. Works everywhere.
 </p>
 
 <p align="center">
@@ -45,8 +45,8 @@ You have coding standards. Your team ignores them. Code reviews catch issues too
 └─────────────────┘     └──────────────┘     └─────────────────┘
 ```
 
-- 🔌 **Provider agnostic** — Claude, Gemini, Codex, OpenCode, Cursor Agent, Ollama, LM Studio, GitHub Models
-- 📦 **Zero dependencies** — Pure Bash, no Node/Python/Go required
+- 🔌 **Provider agnostic** — Claude, Gemini, Codex, OpenCode, Cursor Agent, Kilo, Ollama, LM Studio, GitHub Models, MiniMax
+- 📦 **Pure Bash core** — no runtime framework; individual providers may require their own CLI or API tooling
 - 🪝 **Git native** — Standard pre-commit hook
 - ⚡ **Smart caching** — Skip unchanged files
 - 🔍 **PR review mode** — Review full PRs, not just last commit
@@ -123,9 +123,11 @@ gga install             # Install git hook
 | **Codex** | `codex` | `npm i -g @openai/codex` |
 | **OpenCode** | `opencode` | [opencode.ai](https://opencode.ai) |
 | **Cursor Agent** | `cursor[:model]` | [cursor.com](https://cursor.com) |
+| **Kilo** | `kilo[:model]` | `npm install -g @kilocode/cli` |
 | **Ollama** | `ollama:<model>` | [ollama.ai](https://ollama.ai) |
 | **LM Studio** | `lmstudio[:model]` | [lmstudio.ai](https://lmstudio.ai) |
 | **GitHub Models** | `github:<model>` | [marketplace/models](https://github.com/marketplace/models) |
+| **MiniMax** | `minimax[:model]` | [platform.minimax.io](https://platform.minimax.io) |
 
 > 📖 See [docs/providers.md](docs/providers.md) for detailed examples and setup.
 

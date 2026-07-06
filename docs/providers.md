@@ -4,6 +4,8 @@
 
 Detailed setup and configuration for all supported AI providers.
 
+GGA's core is Bash-only. Provider-specific tools still apply: CLI providers require their CLI, and API providers require `curl`; providers that parse JSON responses use `python3` when noted.
+
 ---
 
 ## Providers Table
@@ -17,9 +19,11 @@ Use whichever AI CLI you have installed:
 | **Codex**         | `codex`            | `codex exec "prompt"`             | `npm i -g @openai/codex`                                                           |
 | **OpenCode**      | `opencode`         | `echo "prompt" \| opencode run`   | [opencode.ai](https://opencode.ai)                                                 |
 | **Cursor Agent**  | `cursor[:model]`   | `echo "prompt" \| cursor-agent -p --output-format text` | [cursor.com](https://cursor.com)                                      |
+| **Kilo**          | `kilo[:model]`     | `echo "prompt" \| kilo run --auto` | `npm install -g @kilocode/cli`                                                     |
 | **Ollama**        | `ollama:<model>`   | `ollama run <model> "prompt"`     | [ollama.ai](https://ollama.ai)                                                     |
 | **LM Studio**     | `lmstudio[:model]` | HTTP API call to local server     | [lmstudio.ai](https://lmstudio.ai)                                                 |
 | **GitHub Models** | `github:<model>`   | HTTP API via `gh auth token`      | [github.com/marketplace/models](https://github.com/marketplace/models)              |
+| **MiniMax**       | `minimax[:model]`  | HTTP API via `MINIMAX_API_KEY`    | [platform.minimax.io](https://platform.minimax.io)                                  |
 
 ---
 
@@ -46,6 +50,12 @@ PROVIDER="cursor"
 
 # Use Cursor Agent with specific model
 PROVIDER="cursor:composer-2"
+
+# Use Kilo with default model
+PROVIDER="kilo"
+
+# Use Kilo with specific model
+PROVIDER="kilo:anthropic/claude-sonnet-4-5"
 
 # Use Ollama with Llama 3.2
 PROVIDER="ollama:llama3.2"
@@ -74,6 +84,13 @@ PROVIDER="github:gpt-4o"
 PROVIDER="github:gpt-4.1"
 PROVIDER="github:deepseek-r1"
 PROVIDER="github:grok-3"
+
+# Use MiniMax with default model (MiniMax-M3)
+MINIMAX_API_KEY="your-api-key"
+PROVIDER="minimax"
+
+# Use MiniMax with specific model
+PROVIDER="minimax:MiniMax-M3"
 
 # Antigravity / VS Code users: use any provider CLI from your integrated terminal
 # Antigravity comes with Gemini built-in — just set:
@@ -121,6 +138,31 @@ printf 'Say hello' | cursor-agent -p --output-format text
 ```
 
 GGA also accepts the legacy `agent` binary name when `cursor-agent` is not available.
+
+### Kilo
+
+Uses Kilo CLI in non-interactive mode. GGA sends the review prompt through stdin to avoid ARG_MAX failures on large reviews.
+
+```bash
+# Install Kilo CLI
+npm install -g @kilocode/cli
+
+# Test it works
+printf 'Say hello' | kilo run --auto
+```
+
+### MiniMax
+
+Uses MiniMax's OpenAI-compatible chat completions API. GGA sends JSON payloads through curl stdin to avoid ARG_MAX failures on large reviews. Requires `curl` and `python3` for JSON payload/response handling.
+
+```bash
+# Get an API key from platform.minimax.io
+export MINIMAX_API_KEY=your-api-key
+
+# Configure GGA
+PROVIDER="minimax"              # uses MiniMax-M3
+PROVIDER="minimax:MiniMax-M3"   # explicit model
+```
 
 ### GitHub Models
 
