@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Provider-agnostic code review using AI</strong><br>
-  Use Claude, Gemini, Codex, OpenCode, Ollama, LM Studio, GitHub Models, or any AI to enforce your coding standards.<br>
+  Use Claude, Gemini, Codex, OpenCode, Cursor Agent, Ollama, LM Studio, GitHub Models, or any AI to enforce your coding standards.<br>
   Zero dependencies. Pure Bash. Works everywhere.
 </p>
 
@@ -45,7 +45,7 @@ You have coding standards. Your team ignores them. Code reviews catch issues too
 └─────────────────┘     └──────────────┘     └─────────────────┘
 ```
 
-- 🔌 **Provider agnostic** — Claude, Gemini, Codex, OpenCode, Ollama, LM Studio, GitHub Models
+- 🔌 **Provider agnostic** — Claude, Gemini, Codex, OpenCode, Cursor Agent, Ollama, LM Studio, GitHub Models
 - 📦 **Zero dependencies** — Pure Bash, no Node/Python/Go required
 - 🪝 **Git native** — Standard pre-commit hook
 - ⚡ **Smart caching** — Skip unchanged files
@@ -122,6 +122,7 @@ gga install             # Install git hook
 | **Gemini** | `gemini` | [gemini-cli](https://github.com/google-gemini/gemini-cli) |
 | **Codex** | `codex` | `npm i -g @openai/codex` |
 | **OpenCode** | `opencode` | [opencode.ai](https://opencode.ai) |
+| **Cursor Agent** | `cursor[:model]` | [cursor.com](https://cursor.com) |
 | **Ollama** | `ollama:<model>` | [ollama.ai](https://ollama.ai) |
 | **LM Studio** | `lmstudio[:model]` | [lmstudio.ai](https://lmstudio.ai) |
 | **GitHub Models** | `github:<model>` | [marketplace/models](https://github.com/marketplace/models) |

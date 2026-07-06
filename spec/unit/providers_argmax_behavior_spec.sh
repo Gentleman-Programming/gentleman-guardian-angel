@@ -71,7 +71,30 @@ done
 cat
 FAKE
 
-    chmod +x "$TEST_BIN_DIR/claude" "$TEST_BIN_DIR/gemini" "$TEST_BIN_DIR/codex" "$TEST_BIN_DIR/opencode"
+    cat > "$TEST_BIN_DIR/cursor-agent" <<'FAKE'
+#!/usr/bin/env bash
+if [[ "$1" != "-p" ]]; then
+  echo "unexpected cursor args: $*" >&2
+  exit 64
+fi
+shift
+if [[ "${1:-}" == "--model" ]]; then
+  echo "CURSOR_MODEL:$2"
+  shift 2
+fi
+if [[ "${1:-}" != "--output-format" || "${2:-}" != "text" ]]; then
+  echo "missing cursor output format: $*" >&2
+  exit 64
+fi
+shift 2
+if [[ $# -ne 0 ]]; then
+  echo "unexpected cursor positional prompt: $*" >&2
+  exit 64
+fi
+cat
+FAKE
+
+    chmod +x "$TEST_BIN_DIR/claude" "$TEST_BIN_DIR/gemini" "$TEST_BIN_DIR/codex" "$TEST_BIN_DIR/opencode" "$TEST_BIN_DIR/cursor-agent"
   }
   BeforeEach 'setup'
 
@@ -125,6 +148,23 @@ FAKE
     The output should include "line 1"
     The output should include "line 2"
     The stderr should include "Waiting for OpenCode"
+  End
+
+  It 'passes the full prompt to cursor via stdin without positional prompt args'
+    When call execute_provider_with_timeout "cursor" $'line 1\nline 2' 5
+    The status should be success
+    The output should include "line 1"
+    The output should include "line 2"
+    The stderr should include "Waiting for Cursor Agent"
+  End
+
+  It 'passes cursor model separately and prompt via stdin'
+    When call execute_provider_with_timeout "cursor:composer-2" $'line 1\nline 2' 5
+    The status should be success
+    The output should include "CURSOR_MODEL:composer-2"
+    The output should include "line 1"
+    The output should include "line 2"
+    The stderr should include "Waiting for Cursor Agent"
   End
 
   It 'passes opencode variant and agent flags while keeping prompt on stdin'
