@@ -6,7 +6,19 @@ Full version history for Gentleman Guardian Angel.
 
 ---
 
-## v2.9.0 (Latest)
+## v2.10.0 (Latest)
+
+- ✅ **feat(providers)**: Added Kiro CLI provider support
+  - `PROVIDER="kiro"` for Kiro CLI headless review
+  - Full GGA review prompts are sent through stdin/temp-file handoff to avoid ARG_MAX failures
+  - Kiro receives only a short required headless instruction as argv
+  - Inline `kiro:model` configuration is rejected; model selection stays in Kiro CLI settings
+- ✅ **docs(providers)**: Updated provider tables and examples for Kiro
+- ✅ CI green for lint, unit tests, integration tests, PR validation, and CodeRabbit
+
+---
+
+## v2.9.0
 
 - ✅ **feat(providers)**: Added Cursor Agent, Kilo, and MiniMax provider support
   - `PROVIDER="cursor[:model]"` for Cursor Agent CLI, including legacy `agent` fallback
