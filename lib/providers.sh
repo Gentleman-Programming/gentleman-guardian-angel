@@ -8,6 +8,7 @@
 # - gemini: Google Gemini CLI
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
+# - cursor: Cursor Agent CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
 # - lmstudio[:model]: LM Studio (optional model)
 # - github:<model>: GitHub Models (OpenAI-compatible API)
@@ -66,6 +67,16 @@ validate_provider() {
         echo ""
         echo "Install OpenCode CLI:"
         echo "  https://opencode.ai"
+        echo ""
+        return 1
+      fi
+      ;;
+    cursor)
+      if ! get_cursor_command >/dev/null; then
+        echo -e "${RED}❌ Cursor Agent CLI not found${NC}"
+        echo ""
+        echo "Install Cursor Agent CLI:"
+        echo "  curl https://cursor.com/install -fsS | bash"
         echo ""
         return 1
       fi
@@ -155,6 +166,7 @@ validate_provider() {
       echo "  - gemini"
       echo "  - codex"
       echo "  - opencode"
+      echo "  - cursor[:model]"
       echo "  - ollama:<model>"
       echo "  - lmstudio[:model]"
       echo "  - github:<model>"
@@ -191,6 +203,13 @@ execute_provider() {
         model=""
       fi
       execute_opencode "$model" "$prompt"
+      ;;
+    cursor)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_cursor "$model" "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -297,6 +316,38 @@ execute_opencode() {
     opencode run "${opencode_args[@]}" -- "$prompt" 2>&1
   fi
   return $?
+}
+
+get_cursor_command() {
+  if command -v cursor-agent >/dev/null 2>&1; then
+    echo "cursor-agent"
+    return 0
+  fi
+  if command -v agent >/dev/null 2>&1; then
+    echo "agent"
+    return 0
+  fi
+  return 1
+}
+
+execute_cursor() {
+  local model="$1"
+  local prompt="$2"
+  local cursor_cmd
+
+  if ! cursor_cmd=$(get_cursor_command); then
+    echo "Error: Cursor Agent CLI not found" >&2
+    return 1
+  fi
+
+  # Cursor Agent headless mode accepts the prompt through stdin when -p is set.
+  # The timeout path also uses stdin to avoid ARG_MAX for normal GGA runs.
+  if [[ -n "$model" ]]; then
+    printf '%s' "$prompt" | "$cursor_cmd" -p --model "$model" --output-format text 2>&1
+  else
+    printf '%s' "$prompt" | "$cursor_cmd" -p --output-format text 2>&1
+  fi
+  return "${PIPESTATUS[1]}"
 }
 
 execute_ollama() {
@@ -686,6 +737,14 @@ get_provider_info() {
         echo "OpenCode CLI (${details[*]})"
       fi
       ;;
+    cursor)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        echo "Cursor Agent CLI"
+      else
+        echo "Cursor Agent CLI (model: $model)"
+      fi
+      ;;
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
@@ -833,7 +892,7 @@ execute_with_timeout() {
 # Execute provider with timeout and progress feedback
 # Usage: execute_provider_with_timeout <provider> <prompt> <timeout>
 #
-# For CLI providers (claude, gemini, codex, opencode), the prompt is written to a
+# For CLI providers (claude, gemini, codex, opencode, cursor), the prompt is written to a
 # temp file and piped via stdin to avoid ARG_MAX limits on Windows (~8KB-32KB),
 # macOS (~256KB), and Linux (~128KB-2MB). Only the file path (short string) is
 # passed as an argument to execute_with_timeout, never the prompt content.
@@ -845,7 +904,7 @@ execute_provider_with_timeout() {
   local result=0
 
   case "$base_provider" in
-    claude|gemini|codex|opencode)
+    claude|gemini|codex|opencode|cursor)
       # Write prompt to temp file ONCE to avoid ARG_MAX limits.
       # This is critical for large PRs that generate prompts > 128KB-256KB.
       # Only CLI providers are handled here. API-based providers keep their
@@ -921,6 +980,31 @@ execute_provider_with_timeout() {
             # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "OpenCode" \
               bash -c 'exec opencode run "${@:2}" < "$1"' _ "$prompt_file" "${opencode_args[@]}"
+          fi
+          result=$?
+          ;;
+        cursor)
+          local model="${provider#*:}"
+          local cursor_cmd
+          if [[ "$model" == "$provider" ]]; then
+            model=""
+          fi
+          if ! cursor_cmd=$(get_cursor_command); then
+            echo "Error: Cursor Agent CLI not found" >&2
+            rm -f "$prompt_file"
+            trap - RETURN
+            return 1
+          fi
+          if [[ -n "$model" ]]; then
+            # Keep prompt content out of argv while passing command/model as
+            # positional shell arguments.
+            # shellcheck disable=SC2016
+            execute_with_timeout "$timeout" "Cursor Agent" \
+              bash -c 'exec "$2" -p --model "$3" --output-format text < "$1"' _ "$prompt_file" "$cursor_cmd" "$model"
+          else
+            # shellcheck disable=SC2016
+            execute_with_timeout "$timeout" "Cursor Agent" \
+              bash -c 'exec "$2" -p --output-format text < "$1"' _ "$prompt_file" "$cursor_cmd"
           fi
           result=$?
           ;;
