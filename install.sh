@@ -60,11 +60,15 @@ fi
 
 # Check if already installed
 if [[ -f "$INSTALL_DIR/gga" ]]; then
-    echo -e "${YELLOW}⚠️  gga is already installed${NC}"
-    read -p "Reinstall? (y/N): " confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        echo "Aborted."
-        exit 0
+    if [[ -t 0 ]]; then
+        echo -e "${YELLOW}⚠️  gga is already installed${NC}"
+        read -p "Reinstall? (y/N): " confirm
+        if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+            echo "Aborted."
+            exit 0
+        fi
+    else
+        echo -e "${YELLOW}⚠️  gga is already installed, reinstalling...${NC}"
     fi
 fi
 
@@ -81,6 +85,17 @@ cp "$SCRIPT_DIR/bin/gga" "$INSTALL_DIR/gga"
 cp "$SCRIPT_DIR/lib/providers.sh" "$LIB_INSTALL_DIR/providers.sh"
 cp "$SCRIPT_DIR/lib/cache.sh" "$LIB_INSTALL_DIR/cache.sh"
 cp "$SCRIPT_DIR/lib/pr_mode.sh" "$LIB_INSTALL_DIR/pr_mode.sh"
+
+# Inject version from git tag if available (otherwise stays "dev")
+GIT_VERSION=$(cd "$SCRIPT_DIR" && git describe --tags --abbrev=0 2>/dev/null || true)
+GIT_VERSION="${GIT_VERSION#v}"  # Strip leading 'v'
+if [[ -n "$GIT_VERSION" ]]; then
+  if [[ "$GGA_OS" == "macos" ]]; then
+    sed -i '' "s|VERSION=\"\${GGA_VERSION:-dev}\"|VERSION=\"$GIT_VERSION\"|" "$INSTALL_DIR/gga"
+  else
+    sed -i "s|VERSION=\"\${GGA_VERSION:-dev}\"|VERSION=\"$GIT_VERSION\"|" "$INSTALL_DIR/gga"
+  fi
+fi
 
 # Update LIB_DIR path in installed script
 if [[ "$GGA_OS" == "macos" ]]; then

@@ -246,23 +246,55 @@ is_gemini_authenticated() {
 
 execute_codex() {
   local prompt="$1"
-  
-  # Codex uses exec subcommand for non-interactive mode
-  # Using --output-last-message to get just the final response
-  codex exec "$prompt" 2>&1
-  return $?
+
+  # Codex uses exec subcommand for non-interactive mode.
+  # Capture ONLY the final assistant message to avoid transcript noise
+  # (instructions can include both STATUS lines and confuse parsers).
+  local output_file
+  if ! output_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_codex_last_msg.XXXXXX"); then
+    echo "Error: Failed to create temporary Codex output file" >&2
+    return 1
+  fi
+
+  # Silence Codex event stream and emit only the final message file content.
+  printf '%s' "$prompt" | codex exec --output-last-message "$output_file" - >/dev/null 2>&1
+  local codex_status=${PIPESTATUS[1]}
+
+  if [[ -f "$output_file" && -s "$output_file" ]]; then
+    cat "$output_file"
+  fi
+
+  rm -f "$output_file"
+  return "$codex_status"
+}
+
+get_opencode_option_args() {
+  local variant="${GGA_OPENCODE_VARIANT:-${OPENCODE_VARIANT:-}}"
+  local agent="${GGA_OPENCODE_AGENT:-${OPENCODE_AGENT:-}}"
+
+  if [[ -n "$variant" ]]; then
+    printf '%s\n' "--variant" "$variant"
+  fi
+  if [[ -n "$agent" ]]; then
+    printf '%s\n' "--agent" "$agent"
+  fi
 }
 
 execute_opencode() {
   local model="$1"
   local prompt="$2"
-  
-  # OpenCode CLI accepts prompt as positional argument
-  # opencode run [message..] - message is a positional array
+  local opencode_args=()
+
+  while IFS= read -r arg; do
+    opencode_args+=("$arg")
+  done < <(get_opencode_option_args)
+
+  # OpenCode CLI accepts prompt as positional argument.
+  # The timeout path uses stdin to avoid ARG_MAX for normal GGA runs.
   if [[ -n "$model" ]]; then
-    opencode run --model "$model" "$prompt" 2>&1
+    opencode run --model "$model" "${opencode_args[@]}" -- "$prompt" 2>&1
   else
-    opencode run "$prompt" 2>&1
+    opencode run "${opencode_args[@]}" -- "$prompt" 2>&1
   fi
   return $?
 }
@@ -633,10 +665,25 @@ get_provider_info() {
       ;;
     opencode)
       local model="${provider#*:}"
-      if [[ "$model" == "$provider" ]]; then
+      local variant="${GGA_OPENCODE_VARIANT:-${OPENCODE_VARIANT:-}}"
+      local agent="${GGA_OPENCODE_AGENT:-${OPENCODE_AGENT:-}}"
+      local details=()
+
+      if [[ "$model" != "$provider" ]]; then
+        details+=("model: $model")
+      fi
+      if [[ -n "$variant" ]]; then
+        details+=("variant: $variant")
+      fi
+      if [[ -n "$agent" ]]; then
+        details+=("agent: $agent")
+      fi
+
+      if [[ ${#details[@]} -eq 0 ]]; then
         echo "OpenCode CLI"
       else
-        echo "OpenCode CLI (model: $model)"
+        local IFS=', '
+        echo "OpenCode CLI (${details[*]})"
       fi
       ;;
     ollama)
@@ -785,32 +832,103 @@ execute_with_timeout() {
 
 # Execute provider with timeout and progress feedback
 # Usage: execute_provider_with_timeout <provider> <prompt> <timeout>
+#
+# For CLI providers (claude, gemini, codex, opencode), the prompt is written to a
+# temp file and piped via stdin to avoid ARG_MAX limits on Windows (~8KB-32KB),
+# macOS (~256KB), and Linux (~128KB-2MB). Only the file path (short string) is
+# passed as an argument to execute_with_timeout, never the prompt content.
 execute_provider_with_timeout() {
   local provider="$1"
   local prompt="$2"
   local timeout="${3:-300}"
   local base_provider="${provider%%:*}"
+  local result=0
 
   case "$base_provider" in
-    claude)
-      execute_with_timeout "$timeout" "Claude" bash -c "printf '%s' \"\$1\" | claude --print 2>&1" -- "$prompt"
-      ;;
-    gemini)
-      execute_with_timeout "$timeout" "Gemini" gemini -p "$prompt"
-      ;;
-    codex)
-      execute_with_timeout "$timeout" "Codex" codex exec "$prompt"
-      ;;
-    opencode)
-      local model="${provider#*:}"
-      if [[ "$model" == "$provider" ]]; then
-        model=""
+    claude|gemini|codex|opencode)
+      # Write prompt to temp file ONCE to avoid ARG_MAX limits.
+      # This is critical for large PRs that generate prompts > 128KB-256KB.
+      # Only CLI providers are handled here. API-based providers keep their
+      # existing execution path and should be fixed separately if needed.
+      local prompt_file
+      if ! prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX"); then
+        echo "Error: Failed to create temporary prompt file" >&2
+        return 1
       fi
-      if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "$prompt"
-      else
-        execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
+      if ! printf '%s' "$prompt" > "$prompt_file"; then
+        echo "Error: Failed to write provider prompt to temporary file" >&2
+        rm -f "$prompt_file"
+        return 1
       fi
+
+      # Ensure cleanup on exit (success, error, or signal).
+      # trap RETURN fires when the function returns for any reason.
+      trap 'rm -f "$prompt_file"' RETURN
+
+      case "$base_provider" in
+        claude)
+          # The wrapper uses exec so the timeout watcher owns the provider process,
+          # not an intermediate shell or pipeline that can survive timeout cleanup.
+          # shellcheck disable=SC2016
+          execute_with_timeout "$timeout" "Claude" \
+            bash -c 'exec claude --print < "$1"' _ "$prompt_file"
+          result=$?
+          ;;
+        gemini)
+          # Gemini appends stdin to the non-interactive prompt value.
+          # shellcheck disable=SC2016
+          execute_with_timeout "$timeout" "Gemini" \
+            bash -c 'exec gemini -p "" < "$1"' _ "$prompt_file"
+          result=$?
+          ;;
+        codex)
+          # Capture only the final assistant message while still feeding the
+          # large prompt through stdin, not argv.
+          local codex_output_file
+          if ! codex_output_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_codex_last_msg.XXXXXX"); then
+            echo "Error: Failed to create temporary Codex output file" >&2
+            rm -f "$prompt_file"
+            trap - RETURN
+            return 1
+          fi
+          # shellcheck disable=SC2016
+          execute_with_timeout "$timeout" "Codex" \
+            bash -c 'exec codex exec --output-last-message "$2" - < "$1" >/dev/null 2>&1' _ "$prompt_file" "$codex_output_file"
+          result=$?
+          if [[ $result -ne 124 && -f "$codex_output_file" && -s "$codex_output_file" ]]; then
+            cat "$codex_output_file"
+          fi
+          rm -f "$codex_output_file"
+          ;;
+        opencode)
+          local model="${provider#*:}"
+          local opencode_args=()
+          if [[ "$model" == "$provider" ]]; then
+            model=""
+          fi
+          while IFS= read -r arg; do
+            opencode_args+=("$arg")
+          done < <(get_opencode_option_args)
+
+          if [[ -n "$model" ]]; then
+            # Pass model and option args positionally to avoid shell injection.
+            # opencode run (without positional message args) reads from stdin automatically.
+            # NOTE: Do NOT use '-' as opencode doesn't support explicit stdin flag.
+            # shellcheck disable=SC2016
+            execute_with_timeout "$timeout" "OpenCode" \
+              bash -c 'exec opencode run --model "$2" "${@:3}" < "$1"' _ "$prompt_file" "$model" "${opencode_args[@]}"
+          else
+            # shellcheck disable=SC2016
+            execute_with_timeout "$timeout" "OpenCode" \
+              bash -c 'exec opencode run "${@:2}" < "$1"' _ "$prompt_file" "${opencode_args[@]}"
+          fi
+          result=$?
+          ;;
+      esac
+
+      # Cleanup temp file (also handled by trap, but explicit is clearer)
+      rm -f "$prompt_file"
+      trap - RETURN
       ;;
     ollama)
       local model="${provider#*:}"
@@ -822,6 +940,7 @@ execute_provider_with_timeout() {
       fi
 
       execute_with_timeout "$timeout" "Ollama ($model)" execute_ollama "$model" "$prompt"
+      result=$?
       ;;
     lmstudio)
       local model="${provider#*:}"
@@ -836,11 +955,15 @@ execute_provider_with_timeout() {
       fi
 
       execute_with_timeout "$timeout" "LM Studio" execute_lmstudio "$model" "$prompt"
+      result=$?
       ;;
     *)
       # Generic fallback: wrap execute_provider with timeout
       # This ensures new providers added later still get timeout support
       execute_with_timeout "$timeout" "$base_provider" execute_provider "$provider" "$prompt"
+      result=$?
       ;;
   esac
+
+  return $result
 }

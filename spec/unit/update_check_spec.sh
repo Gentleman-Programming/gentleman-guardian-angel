@@ -118,4 +118,18 @@ Describe 'check_update()'
       The output should equal ""
     End
   End
+
+  Describe 'when running a dev build'
+    mock_curl_dev() {
+      echo '{"tag_name": "v2.8.0"}'
+    }
+
+    It 'skips update check entirely'
+      CURL_CMD="mock_curl_dev"
+      VERSION="dev"
+      When call check_update
+      The status should be success
+      The output should equal ""
+    End
+  End
 End

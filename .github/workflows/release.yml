@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release & Update Homebrew
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests before release
+        run: |
+          curl -fsSL https://git.io/shellspec | sh -s -- --yes
+          export PATH="$HOME/.local/lib/shellspec:$PATH"
+
+          # Inject version for tests (same as Homebrew will do)
+          export GGA_VERSION="${{ steps.version.outputs.version }}"
+          shellspec spec/unit
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+
+      - name: Update Homebrew formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          TAR_URL="https://github.com/Gentleman-Programming/gentleman-guardian-angel/archive/refs/tags/${TAG}.tar.gz"
+
+          # Download tarball and compute SHA256
+          SHA256=$(curl -sL "$TAR_URL" | shasum -a 256 | awk '{print $1}')
+
+          # Generate new formula
+          cat > /tmp/gga.rb << FORMULA
+          class Gga < Formula
+            desc "Gentleman Guardian Angel - Provider-agnostic code review using AI (Claude, Gemini, Codex, OpenCode, Ollama)"
+            homepage "https://github.com/Gentleman-Programming/gentleman-guardian-angel"
+            url "${TAR_URL}"
+            sha256 "${SHA256}"
+            license "MIT"
+            version "${VERSION}"
+
+            def install
+              # Install main script
+              bin.install "bin/gga"
+
+              # Install library files
+              (libexec/"lib").install "lib/providers.sh"
+              (libexec/"lib").install "lib/cache.sh"
+              (libexec/"lib").install "lib/pr_mode.sh"
+
+              # Inject release version (default is "dev" for local/source builds)
+              inreplace bin/"gga",
+                /VERSION=.*\{GGA_VERSION:-dev\}.*/,
+                "VERSION=\"#{version}\""
+
+              # Update LIB_DIR path in the installed script
+              inreplace bin/"gga",
+                /LIB_DIR=.*/,
+                "LIB_DIR=\"#{libexec}/lib\""
+            end
+
+            test do
+              assert_match "gga v#{version}", shell_output("#{bin}/gga version")
+            end
+          end
+          FORMULA
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' /tmp/gga.rb
+
+          # Push to homebrew-tap
+          cd /tmp
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/Gentleman-Programming/homebrew-tap.git"
+          cd homebrew-tap
+          cp /tmp/gga.rb Formula/gga.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/gga.rb
+          git commit -m "gga: update to ${VERSION}"
+          git push

@@ -113,12 +113,44 @@ Describe 'gga commands'
   Describe 'gga config'
     setup() {
       TEMP_DIR=$(mktemp -d)
+      TEST_HOME=$(mktemp -d)
+      ORIGINAL_HOME="${HOME:-}"
+      ORIGINAL_XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-}"
+      ORIGINAL_APPDATA="${APPDATA:-}"
+      ORIGINAL_GGA_OPENCODE_VARIANT="${GGA_OPENCODE_VARIANT:-}"
+      ORIGINAL_GGA_OPENCODE_AGENT="${GGA_OPENCODE_AGENT:-}"
+      HOME="$TEST_HOME"
+      XDG_CONFIG_HOME="$TEST_HOME/.config"
+      unset APPDATA
+      unset GGA_OPENCODE_VARIANT
+      unset GGA_OPENCODE_AGENT
       cd "$TEMP_DIR"
     }
 
     cleanup() {
       cd /
-      rm -rf "$TEMP_DIR"
+      HOME="$ORIGINAL_HOME"
+      if [[ -n "$ORIGINAL_XDG_CONFIG_HOME" ]]; then
+        XDG_CONFIG_HOME="$ORIGINAL_XDG_CONFIG_HOME"
+      else
+        unset XDG_CONFIG_HOME
+      fi
+      if [[ -n "$ORIGINAL_APPDATA" ]]; then
+        APPDATA="$ORIGINAL_APPDATA"
+      else
+        unset APPDATA
+      fi
+      if [[ -n "$ORIGINAL_GGA_OPENCODE_VARIANT" ]]; then
+        GGA_OPENCODE_VARIANT="$ORIGINAL_GGA_OPENCODE_VARIANT"
+      else
+        unset GGA_OPENCODE_VARIANT
+      fi
+      if [[ -n "$ORIGINAL_GGA_OPENCODE_AGENT" ]]; then
+        GGA_OPENCODE_AGENT="$ORIGINAL_GGA_OPENCODE_AGENT"
+      else
+        unset GGA_OPENCODE_AGENT
+      fi
+      rm -rf "$TEMP_DIR" "$TEST_HOME"
     }
 
     BeforeEach 'setup'
@@ -139,6 +171,32 @@ Describe 'gga commands'
       echo 'PROVIDER="claude"' > .gga
       When call gga config
       The output should include "claude"
+    End
+
+    It 'shows OpenCode variant and agent when configured'
+      cat > .gga <<'EOF'
+PROVIDER="opencode"
+OPENCODE_VARIANT="high"
+OPENCODE_AGENT="gga-reviewer"
+EOF
+      When call gga config
+      The output should include "OPENCODE_VARIANT"
+      The output should include "high"
+      The output should include "OPENCODE_AGENT"
+      The output should include "gga-reviewer"
+    End
+
+    It 'lets GGA-prefixed OpenCode environment variables override config'
+      cat > .gga <<'EOF'
+PROVIDER="opencode"
+OPENCODE_VARIANT="low"
+OPENCODE_AGENT="default-agent"
+EOF
+      When call env GGA_OPENCODE_VARIANT=max GGA_OPENCODE_AGENT=override-agent "$PROJECT_ROOT/bin/gga" config
+      The output should include "max"
+      The output should include "override-agent"
+      The output should not include "low"
+      The output should not include "default-agent"
     End
 
     It 'shows rules file status'
