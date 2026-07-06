@@ -414,11 +414,12 @@ print(payload)
   # Remove trailing slash from host if present
   host="${host%/}"
   
-  # Call Ollama API
+  # Call Ollama API. Send the payload through stdin so large prompts do not
+  # travel through argv and hit ARG_MAX on Git Bash/MSYS or macOS.
   local api_response
-  api_response=$(curl -s --fail-with-body \
+  api_response=$(printf '%s' "$json_payload" | curl -s --fail-with-body \
     -H "Content-Type: application/json" \
-    -d "$json_payload" \
+    --data-binary @- \
     "${host}/api/generate" 2>&1)
   
   local curl_status=$?
@@ -526,11 +527,12 @@ print(payload)
 
   local endpoint="${host}/chat/completions"
 
-  # Call LM Studio API
+  # Call LM Studio API. Send the payload through stdin so large prompts do not
+  # travel through argv and hit ARG_MAX on Git Bash/MSYS or macOS.
   local api_response
-  api_response=$(curl -s --fail-with-body \
+  api_response=$(printf '%s' "$json_payload" | curl -s --fail-with-body \
     -H "Content-Type: application/json" \
-    -d "$json_payload" \
+    --data-binary @- \
     "$endpoint" 2>&1)
 
   local curl_status=$?
@@ -573,9 +575,24 @@ execute_lmstudio_api_fallback() {
   fi
 
   # Build JSON payload manually (less safe, but works without python3)
+  local escaped_prompt=""
+  local line
+  local first_line=true
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line//\\/\\\\}"
+    line="${line//\"/\\\"}"
+    line="${line//$'\t'/\\t}"
+    if [[ "$first_line" == true ]]; then
+      escaped_prompt="$line"
+      first_line=false
+    else
+      escaped_prompt+="\\n$line"
+    fi
+  done <<< "$prompt"
+
   local json_payload
   json_payload="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\""
-  json_payload+="$(printf '%s' "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | sed ':a;N;$!ba;s/\n/\\n/g')"
+  json_payload+="$escaped_prompt"
   json_payload+="\"}],\"temperature\":0.7,\"stream\":false}"
 
   # Ensure host ends with /v1
@@ -585,11 +602,12 @@ execute_lmstudio_api_fallback() {
 
   local endpoint="${host}/chat/completions"
 
-  # Call LM Studio API
+  # Call LM Studio API. Send the payload through stdin so large prompts do not
+  # travel through argv and hit ARG_MAX on Git Bash/MSYS or macOS.
   local api_response
-  api_response=$(curl -s --fail-with-body \
+  api_response=$(printf '%s' "$json_payload" | curl -s --fail-with-body \
     -H "Content-Type: application/json" \
-    -d "$json_payload" \
+    --data-binary @- \
     "$endpoint" 2>&1)
 
   local curl_status=$?
@@ -645,13 +663,14 @@ print(payload)
   fi
 
   # Call GitHub Models API
-  # Use -s (silent) without --fail-with-body so we always get the response body
-  # The python3 parser handles error responses from the API
+  # Use -s (silent) without --fail-with-body so we always get the response body.
+  # The python3 parser handles error responses from the API. Send the payload
+  # through stdin so large prompts do not travel through argv.
   local api_response
-  api_response=$(curl -sS \
+  api_response=$(printf '%s' "$json_payload" | curl -sS \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $token" \
-    -d "$json_payload" \
+    --data-binary @- \
     "$GITHUB_MODELS_ENDPOINT" 2>&1)
 
   local curl_status=$?
