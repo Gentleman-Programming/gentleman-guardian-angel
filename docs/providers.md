@@ -20,6 +20,7 @@ Use whichever AI CLI you have installed:
 | **OpenCode**      | `opencode`         | `echo "prompt" \| opencode run`   | [opencode.ai](https://opencode.ai)                                                 |
 | **Cursor Agent**  | `cursor[:model]`   | `echo "prompt" \| cursor-agent -p --output-format text` | [cursor.com](https://cursor.com)                                      |
 | **Kilo**          | `kilo[:model]`     | `echo "prompt" \| kilo run --auto` | `npm install -g @kilocode/cli`                                                     |
+| **Kiro**          | `kiro`             | `cat prompt.txt \| kiro-cli chat --no-interactive "Review stdin"` | [kiro.dev/downloads](https://kiro.dev/downloads/)                    |
 | **Ollama**        | `ollama:<model>`   | `ollama run <model> "prompt"`     | [ollama.ai](https://ollama.ai)                                                     |
 | **LM Studio**     | `lmstudio[:model]` | HTTP API call to local server     | [lmstudio.ai](https://lmstudio.ai)                                                 |
 | **GitHub Models** | `github:<model>`   | HTTP API via `gh auth token`      | [github.com/marketplace/models](https://github.com/marketplace/models)              |
@@ -56,6 +57,9 @@ PROVIDER="kilo"
 
 # Use Kilo with specific model
 PROVIDER="kilo:anthropic/claude-sonnet-4-5"
+
+# Use Kiro CLI
+PROVIDER="kiro"
 
 # Use Ollama with Llama 3.2
 PROVIDER="ollama:llama3.2"
@@ -150,6 +154,20 @@ npm install -g @kilocode/cli
 # Test it works
 printf 'Say hello' | kilo run --auto
 ```
+
+### Kiro
+
+Uses Kiro CLI in headless mode. GGA sends the review prompt through stdin to avoid ARG_MAX failures on large reviews.
+
+```bash
+# Install Kiro CLI
+# See https://kiro.dev/downloads/
+
+# Test it works
+printf 'Say hello' | kiro-cli chat --no-interactive 'Respond to the stdin prompt'
+```
+
+Kiro headless mode requires a small positional prompt, so GGA passes a short instruction in argv and sends the full review prompt through stdin. Kiro model selection is managed through Kiro CLI settings, not inline `PROVIDER="kiro:model"` config.
 
 ### MiniMax
 

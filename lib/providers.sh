@@ -10,6 +10,7 @@
 # - opencode: OpenCode CLI (optional :model)
 # - cursor: Cursor Agent CLI (optional :model)
 # - kilo: Kilo CLI (optional :model)
+# - kiro: Kiro CLI
 # - ollama:<model>: Ollama with specified model
 # - lmstudio[:model]: LM Studio (optional model)
 # - github:<model>: GitHub Models (OpenAI-compatible API)
@@ -89,6 +90,24 @@ validate_provider() {
         echo ""
         echo "Install Kilo CLI:"
         echo "  npm install -g @kilocode/cli"
+        echo ""
+        return 1
+      fi
+      ;;
+    kiro)
+      if ! command -v kiro-cli &> /dev/null; then
+        echo -e "${RED}❌ Kiro CLI not found${NC}"
+        echo ""
+        echo "Install Kiro CLI:"
+        echo "  https://kiro.dev/downloads/"
+        echo ""
+        return 1
+      fi
+      local model="${provider#*:}"
+      if [[ "$model" != "$provider" && -n "$model" ]]; then
+        echo -e "${RED}❌ Kiro provider does not support inline model selection${NC}"
+        echo ""
+        echo "Configure Kiro's default model with kiro-cli settings instead."
         echo ""
         return 1
       fi
@@ -210,6 +229,7 @@ validate_provider() {
       echo "  - opencode"
       echo "  - cursor[:model]"
       echo "  - kilo[:model]"
+      echo "  - kiro"
       echo "  - ollama:<model>"
       echo "  - lmstudio[:model]"
       echo "  - github:<model>"
@@ -261,6 +281,9 @@ execute_provider() {
         model=""
       fi
       execute_kilo "$model" "$prompt"
+      ;;
+    kiro)
+      execute_kiro "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -419,6 +442,16 @@ execute_kilo() {
   else
     printf '%s' "$prompt" | kilo run --auto 2>&1
   fi
+  return "${PIPESTATUS[1]}"
+}
+
+execute_kiro() {
+  local prompt="$1"
+  local kiro_instruction="Review the complete GGA prompt provided on stdin and respond with the required STATUS line."
+
+  # Kiro headless mode requires a small positional prompt. The large review
+  # prompt travels through stdin as context to avoid ARG_MAX failures.
+  printf '%s' "$prompt" | kiro-cli chat --no-interactive "$kiro_instruction" 2>&1
   return "${PIPESTATUS[1]}"
 }
 
@@ -954,6 +987,9 @@ get_provider_info() {
         echo "Kilo CLI (model: $model)"
       fi
       ;;
+    kiro)
+      echo "Kiro CLI"
+      ;;
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
@@ -1137,7 +1173,7 @@ execute_with_timeout() {
 # Execute provider with timeout and progress feedback
 # Usage: execute_provider_with_timeout <provider> <prompt> <timeout>
 #
-# For CLI providers (claude, gemini, codex, opencode, cursor, kilo), the prompt is written to a
+# For CLI providers (claude, gemini, codex, opencode, cursor, kilo, kiro), the prompt is written to a
 # temp file and piped via stdin to avoid ARG_MAX limits on Windows (~8KB-32KB),
 # macOS (~256KB), and Linux (~128KB-2MB). Only the file path (short string) is
 # passed as an argument to execute_with_timeout, never the prompt content.
@@ -1149,7 +1185,7 @@ execute_provider_with_timeout() {
   local result=0
 
   case "$base_provider" in
-    claude|gemini|codex|opencode|cursor|kilo)
+    claude|gemini|codex|opencode|cursor|kilo|kiro)
       # Write prompt to temp file ONCE to avoid ARG_MAX limits.
       # This is critical for large PRs that generate prompts > 128KB-256KB.
       # Only CLI providers are handled here. API-based providers keep their
@@ -1268,6 +1304,14 @@ execute_provider_with_timeout() {
             execute_with_timeout "$timeout" "Kilo" \
               bash -c 'exec kilo run --auto < "$1"' _ "$prompt_file"
           fi
+          result=$?
+          ;;
+        kiro)
+          # Kiro headless mode requires a small positional prompt. The large
+          # review prompt travels through stdin as context to avoid ARG_MAX.
+          # shellcheck disable=SC2016
+          execute_with_timeout "$timeout" "Kiro" \
+            bash -c 'exec kiro-cli chat --no-interactive "$2" < "$1"' _ "$prompt_file" "Review the complete GGA prompt provided on stdin and respond with the required STATUS line."
           result=$?
           ;;
       esac
