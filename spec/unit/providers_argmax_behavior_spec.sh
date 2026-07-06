@@ -34,11 +34,11 @@ FAKE
 
     cat > "$TEST_BIN_DIR/codex" <<'FAKE'
 #!/usr/bin/env bash
-if [[ "$1" != "exec" || "$2" != "-" ]]; then
+if [[ "$1" != "exec" || "$2" != "--output-last-message" || -z "${3:-}" || "$4" != "-" ]]; then
   echo "unexpected codex args: $*" >&2
   exit 64
 fi
-cat
+cat > "$3"
 FAKE
 
     cat > "$TEST_BIN_DIR/opencode" <<'FAKE'

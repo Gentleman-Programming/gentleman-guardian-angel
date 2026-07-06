@@ -246,11 +246,26 @@ is_gemini_authenticated() {
 
 execute_codex() {
   local prompt="$1"
-  
-  # Codex uses exec subcommand for non-interactive mode
-  # Using --output-last-message to get just the final response
-  codex exec "$prompt" 2>&1
-  return $?
+
+  # Codex uses exec subcommand for non-interactive mode.
+  # Capture ONLY the final assistant message to avoid transcript noise
+  # (instructions can include both STATUS lines and confuse parsers).
+  local output_file
+  if ! output_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_codex_last_msg.XXXXXX"); then
+    echo "Error: Failed to create temporary Codex output file" >&2
+    return 1
+  fi
+
+  # Silence Codex event stream and emit only the final message file content.
+  printf '%s' "$prompt" | codex exec --output-last-message "$output_file" - >/dev/null 2>&1
+  local codex_status=${PIPESTATUS[1]}
+
+  if [[ -f "$output_file" && -s "$output_file" ]]; then
+    cat "$output_file"
+  fi
+
+  rm -f "$output_file"
+  return "$codex_status"
 }
 
 execute_opencode() {
@@ -835,11 +850,23 @@ execute_provider_with_timeout() {
           result=$?
           ;;
         codex)
-          # codex exec - reads prompt from stdin.
+          # Capture only the final assistant message while still feeding the
+          # large prompt through stdin, not argv.
+          local codex_output_file
+          if ! codex_output_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_codex_last_msg.XXXXXX"); then
+            echo "Error: Failed to create temporary Codex output file" >&2
+            rm -f "$prompt_file"
+            trap - RETURN
+            return 1
+          fi
           # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Codex" \
-            bash -c 'exec codex exec - < "$1"' _ "$prompt_file"
+            bash -c 'exec codex exec --output-last-message "$2" - < "$1" >/dev/null 2>&1' _ "$prompt_file" "$codex_output_file"
           result=$?
+          if [[ $result -ne 124 && -f "$codex_output_file" && -s "$codex_output_file" ]]; then
+            cat "$codex_output_file"
+          fi
+          rm -f "$codex_output_file"
           ;;
         opencode)
           local model="${provider#*:}"
