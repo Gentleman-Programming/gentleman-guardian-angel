@@ -61,6 +61,12 @@ Describe 'gga commands'
       The output should include "--ci"
       The output should include "CI mode"
     End
+
+    It 'renders configuration paths without literal ANSI escapes'
+      When call gga help
+      The output should include ".gga"
+      The output should not include "\\033"
+    End
   End
 
   Describe 'gga init'
@@ -117,9 +123,12 @@ Describe 'gga commands'
       ORIGINAL_HOME="${HOME:-}"
       ORIGINAL_XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-}"
       ORIGINAL_APPDATA="${APPDATA:-}"
+      ORIGINAL_PATH="$PATH"
+      TEST_BIN_DIR=$(mktemp -d)
       ORIGINAL_GGA_OPENCODE_VARIANT="${GGA_OPENCODE_VARIANT:-}"
       ORIGINAL_GGA_OPENCODE_AGENT="${GGA_OPENCODE_AGENT:-}"
       HOME="$TEST_HOME"
+      PATH="$TEST_BIN_DIR:$PATH"
       XDG_CONFIG_HOME="$TEST_HOME/.config"
       unset APPDATA
       unset GGA_OPENCODE_VARIANT
@@ -140,6 +149,7 @@ Describe 'gga commands'
       else
         unset APPDATA
       fi
+      PATH="$ORIGINAL_PATH"
       if [[ -n "$ORIGINAL_GGA_OPENCODE_VARIANT" ]]; then
         GGA_OPENCODE_VARIANT="$ORIGINAL_GGA_OPENCODE_VARIANT"
       else
@@ -150,7 +160,7 @@ Describe 'gga commands'
       else
         unset GGA_OPENCODE_AGENT
       fi
-      rm -rf "$TEMP_DIR" "$TEST_HOME"
+      rm -rf "$TEMP_DIR" "$TEST_HOME" "$TEST_BIN_DIR"
     }
 
     BeforeEach 'setup'
@@ -170,6 +180,37 @@ Describe 'gga commands'
     It 'shows provider when configured'
       echo 'PROVIDER="claude"' > .gga
       When call gga config
+      The output should include "claude"
+    End
+
+    It 'loads project config with CRLF line endings'
+      printf 'PROVIDER="claude"\r\nFILE_PATTERNS="*.sh"\r\n' > .gga
+      When call gga config
+      The status should be success
+      The output should include "claude"
+      The output should include "*.sh"
+    End
+
+    It 'loads project config with UTF-8 BOM'
+      printf '\357\273\277PROVIDER="claude"\n' > .gga
+      When call gga config
+      The status should be success
+      The output should include "claude"
+    End
+
+    It 'loads global config from Windows-style APPDATA path in Git Bash'
+      mkdir -p "$TEST_BIN_DIR" "$TEST_HOME/AppData/Roaming/gga"
+      cat > "$TEST_BIN_DIR/cygpath" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "-u" ]]; then
+  echo "$TEST_HOME/AppData/Roaming"
+fi
+EOF
+      chmod +x "$TEST_BIN_DIR/cygpath"
+      printf 'PROVIDER="claude"\r\n' > "$TEST_HOME/AppData/Roaming/gga/config"
+
+      When call env APPDATA='C:\Users\Test\AppData\Roaming' TEST_HOME="$TEST_HOME" PATH="$PATH" "$PROJECT_ROOT/bin/gga" config
+      The status should be success
       The output should include "claude"
     End
 
@@ -230,6 +271,23 @@ EOF
     It 'hook contains gga run command'
       gga install > /dev/null
       The contents of file ".git/hooks/pre-commit" should include "gga run"
+    End
+
+    It 'resolves sibling lib/gga directory when installed LIB_DIR is stale'
+      local install_root
+      install_root=$(mktemp -d)
+      mkdir -p "$install_root/bin/lib/gga"
+      cp "$PROJECT_ROOT/bin/gga" "$install_root/bin/gga"
+      cp "$PROJECT_ROOT/lib/providers.sh" "$install_root/bin/lib/gga/providers.sh"
+      cp "$PROJECT_ROOT/lib/cache.sh" "$install_root/bin/lib/gga/cache.sh"
+      cp "$PROJECT_ROOT/lib/pr_mode.sh" "$install_root/bin/lib/gga/pr_mode.sh"
+      sed -i.bak 's|^LIB_DIR=.*|LIB_DIR="/mnt/c/Users/example/bin/lib/gga"|' "$install_root/bin/gga"
+      chmod +x "$install_root/bin/gga"
+
+      When call "$install_root/bin/gga" version
+      The status should be success
+      The output should include "gga v"
+      rm -rf "$install_root"
     End
 
     It 'hook is executable'

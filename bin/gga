@@ -13,6 +13,38 @@ VERSION="${GGA_VERSION:-dev}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
+resolve_lib_dir() {
+  local configured_lib_dir="$1"
+  local candidate
+  local -a candidates=(
+    "$configured_lib_dir"
+    "$SCRIPT_DIR/lib/gga"
+    "$(dirname "$SCRIPT_DIR")/lib/gga"
+    "$(dirname "$SCRIPT_DIR")/lib"
+  )
+
+  if command -v cygpath >/dev/null 2>&1; then
+    candidates+=("$(cygpath -u "$configured_lib_dir" 2>/dev/null || true)")
+  fi
+
+  for candidate in "${candidates[@]}"; do
+    [[ -n "$candidate" ]] || continue
+    if [[ -f "$candidate/providers.sh" && -f "$candidate/cache.sh" && -f "$candidate/pr_mode.sh" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  echo "$configured_lib_dir"
+  return 1
+}
+
+if ! LIB_DIR=$(resolve_lib_dir "$LIB_DIR"); then
+  echo "Error: GGA library files not found" >&2
+  echo "Expected providers.sh, cache.sh, and pr_mode.sh near: $LIB_DIR" >&2
+  exit 1
+fi
+
 # Source library functions
 # shellcheck source=lib/providers.sh
 source "$LIB_DIR/providers.sh"
@@ -68,6 +100,30 @@ UPDATE_CHECK_REPO="Gentleman-Programming/gentleman-guardian-angel"
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
+normalize_bash_path() {
+  local path="$1"
+  local converted
+
+  if [[ -n "$path" && "$path" =~ ^[A-Za-z]:\\ ]] && command -v cygpath >/dev/null 2>&1; then
+    if converted=$(cygpath -u "$path" 2>/dev/null); then
+      printf '%s\n' "$converted"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "$path"
+}
+
+get_global_config_path() {
+  if [[ -n "${APPDATA:-}" ]]; then
+    printf '%s\n' "$(normalize_bash_path "$APPDATA")/gga/config"
+  elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+    printf '%s\n' "$(normalize_bash_path "$XDG_CONFIG_HOME")/gga/config"
+  else
+    printf '%s\n' "$HOME/.config/gga/config"
+  fi
+}
 
 # Check for newer version on GitHub (2s timeout, silent on failure)
 check_update() {
@@ -148,8 +204,8 @@ print_help() {
   echo "  --diff-only       With --pr-mode: send only diffs (faster, cheaper)"
   echo ""
   echo -e "${BOLD}CONFIGURATION:${NC}"
-  echo "  Create a ${CYAN}.gga${NC} file in your project root or"
-  echo "  ${CYAN}~/.config/gga/config${NC} for global settings."
+  echo -e "  Create a ${CYAN}.gga${NC} file in your project root or"
+  echo -e "  ${CYAN}~/.config/gga/config${NC} for global settings."
   echo ""
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
@@ -209,6 +265,14 @@ log_error() {
 # Configuration Loading
 # ============================================================================
 
+sanitize_config_file() {
+  local config_file="$1"
+
+  # Strip UTF-8 BOM from the first line and CR from CRLF files before sourcing.
+  # This keeps Windows-edited .gga files readable without modifying user files.
+  sed $'1s/^\xef\xbb\xbf//' "$config_file" | tr -d '\r'
+}
+
 load_config() {
   # Reset to defaults
   PROVIDER=""
@@ -222,23 +286,17 @@ load_config() {
   OPENCODE_AGENT=""
 
   # Load global config first (platform-aware path)
-  if [[ -n "${APPDATA:-}" ]]; then
-    GLOBAL_CONFIG="${APPDATA}/gga/config"
-  elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
-    GLOBAL_CONFIG="${XDG_CONFIG_HOME}/gga/config"
-  else
-    GLOBAL_CONFIG="$HOME/.config/gga/config"
-  fi
+  GLOBAL_CONFIG=$(get_global_config_path)
   if [[ -f "$GLOBAL_CONFIG" ]]; then
     # shellcheck source=/dev/null
-    source "$GLOBAL_CONFIG"
+    source <(sanitize_config_file "$GLOBAL_CONFIG")
   fi
 
   # Load project config (overrides global)
   PROJECT_CONFIG=".gga"
   if [[ -f "$PROJECT_CONFIG" ]]; then
     # shellcheck source=/dev/null
-    source "$PROJECT_CONFIG"
+    source <(sanitize_config_file "$PROJECT_CONFIG")
   fi
 
   # Environment variable overrides everything
@@ -268,13 +326,7 @@ cmd_config() {
   echo ""
   
   # Check config sources (platform-aware path)
-  if [[ -n "${APPDATA:-}" ]]; then
-    GLOBAL_CONFIG="${APPDATA}/gga/config"
-  elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
-    GLOBAL_CONFIG="${XDG_CONFIG_HOME}/gga/config"
-  else
-    GLOBAL_CONFIG="$HOME/.config/gga/config"
-  fi
+  GLOBAL_CONFIG=$(get_global_config_path)
   PROJECT_CONFIG=".gga"
   
   echo -e "${BOLD}Config Files:${NC}"
