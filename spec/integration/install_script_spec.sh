@@ -33,5 +33,15 @@ Describe 'install.sh'
         bash -c 'echo "y" | bash "$1/install.sh"' _ "$PROJECT_ROOT" 2>/dev/null
       The path "$TEMP_DIR/.local/share/gga/lib/pr_mode.sh" should be file
     End
+
+    It 'creates a cmd.exe wrapper on Windows'
+      HOME="$TEMP_DIR" GGA_TEST_OS="windows" \
+        bash -c 'echo "y" | bash "$1/install.sh"' _ "$PROJECT_ROOT" 2>/dev/null
+      The path "$TEMP_DIR/bin/gga.bat" should be file
+      The contents of file "$TEMP_DIR/bin/gga.bat" should include "where git"
+      The contents of file "$TEMP_DIR/bin/gga.bat" should include "where bash"
+      The contents of file "$TEMP_DIR/bin/gga.bat" should include "bash.exe"
+      The contents of file "$TEMP_DIR/bin/gga.bat" should include "%~dp0gga"
+    End
   End
 End

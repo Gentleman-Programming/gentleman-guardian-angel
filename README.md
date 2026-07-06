@@ -70,7 +70,7 @@ cd gentleman-guardian-angel
 ./install.sh
 ```
 
-### Windows (Git Bash)
+### Windows (Git Bash, PowerShell, cmd.exe)
 
 ```bash
 git clone https://github.com/Gentleman-Programming/gentleman-guardian-angel.git
@@ -78,6 +78,8 @@ cd gentleman-guardian-angel
 bash install.sh
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
+
+On Windows, the installer also creates `~/bin/gga.bat` so `gga` can be called from `cmd.exe` and PowerShell. Add `%USERPROFILE%\bin` to your Windows user `PATH` for those shells; `.bashrc` only affects Git Bash.
 
 > **WSL** is also fully supported — no special configuration needed.
 

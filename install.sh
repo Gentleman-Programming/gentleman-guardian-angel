@@ -19,6 +19,11 @@ NC='\033[0m'
 
 # OS detection
 detect_os() {
+  if [[ -n "${GGA_TEST_OS:-}" ]]; then
+    echo "$GGA_TEST_OS"
+    return 0
+  fi
+
   case "$(uname -s)" in
     Darwin*)          echo "macos" ;;
     MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
@@ -26,6 +31,16 @@ detect_os() {
   esac
 }
 GGA_OS=$(detect_os)
+
+sed_in_place() {
+  local expression="$1"
+  local file="$2"
+
+  case "$(uname -s)" in
+    Darwin*) sed -i '' "$expression" "$file" ;;
+    *)       sed -i "$expression" "$file" ;;
+  esac
+}
 
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -86,23 +101,44 @@ cp "$SCRIPT_DIR/lib/providers.sh" "$LIB_INSTALL_DIR/providers.sh"
 cp "$SCRIPT_DIR/lib/cache.sh" "$LIB_INSTALL_DIR/cache.sh"
 cp "$SCRIPT_DIR/lib/pr_mode.sh" "$LIB_INSTALL_DIR/pr_mode.sh"
 
+if [[ "$GGA_OS" == "windows" ]]; then
+  cat > "$INSTALL_DIR/gga.bat" <<'EOF'
+@echo off
+setlocal
+
+for /f "delims=" %%i in ('where git 2^>nul') do set "GIT_CMD=%%i" & goto :found_git
+
+echo Git not found on PATH. Install Git for Windows to use gga from cmd.exe.
+exit /b 1
+
+:found_git
+for %%i in ("%GIT_CMD%") do set "GIT_DIR=%%~dpi"
+set "BASH_EXE=%GIT_DIR%..\bin\bash.exe"
+
+if not exist "%BASH_EXE%" (
+  for /f "delims=" %%j in ('where bash 2^>nul') do set "BASH_EXE=%%j" & goto :found_bash
+)
+
+:found_bash
+if not exist "%BASH_EXE%" (
+  echo Git Bash not found. Install or repair Git for Windows.
+  exit /b 1
+)
+
+"%BASH_EXE%" "%~dp0gga" %*
+exit /b %ERRORLEVEL%
+EOF
+fi
+
 # Inject version from git tag if available (otherwise stays "dev")
 GIT_VERSION=$(cd "$SCRIPT_DIR" && git describe --tags --abbrev=0 2>/dev/null || true)
 GIT_VERSION="${GIT_VERSION#v}"  # Strip leading 'v'
 if [[ -n "$GIT_VERSION" ]]; then
-  if [[ "$GGA_OS" == "macos" ]]; then
-    sed -i '' "s|VERSION=\"\${GGA_VERSION:-dev}\"|VERSION=\"$GIT_VERSION\"|" "$INSTALL_DIR/gga"
-  else
-    sed -i "s|VERSION=\"\${GGA_VERSION:-dev}\"|VERSION=\"$GIT_VERSION\"|" "$INSTALL_DIR/gga"
-  fi
+  sed_in_place "s|VERSION=\"\${GGA_VERSION:-dev}\"|VERSION=\"$GIT_VERSION\"|" "$INSTALL_DIR/gga"
 fi
 
 # Update LIB_DIR path in installed script
-if [[ "$GGA_OS" == "macos" ]]; then
-  sed -i '' "s|LIB_DIR=.*|LIB_DIR=\"$LIB_INSTALL_DIR\"|" "$INSTALL_DIR/gga"
-else
-  sed -i "s|LIB_DIR=.*|LIB_DIR=\"$LIB_INSTALL_DIR\"|" "$INSTALL_DIR/gga"
-fi
+sed_in_place "s|LIB_DIR=.*|LIB_DIR=\"$LIB_INSTALL_DIR\"|" "$INSTALL_DIR/gga"
 
 # Make executable
 chmod +x "$INSTALL_DIR/gga"
@@ -117,9 +153,13 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
   echo -e "${YELLOW}⚠️  $INSTALL_DIR is not in your PATH${NC}"
   echo ""
   if [[ "$GGA_OS" == "windows" ]]; then
-    echo "Add this line to your ~/.bashrc:"
+    echo "For Git Bash, add this line to your ~/.bashrc:"
     echo ""
     echo -e "  ${CYAN}export PATH=\"\$HOME/bin:\$PATH\"${NC}"
+    echo ""
+    echo "For cmd.exe or PowerShell, add this directory to your Windows user PATH:"
+    echo ""
+    printf '  %b%s%b\n' "$CYAN" '%USERPROFILE%\bin' "$NC"
   else
     echo "Add this line to your ~/.bashrc or ~/.zshrc:"
     echo ""
