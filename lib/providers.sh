@@ -798,7 +798,7 @@ execute_provider_with_timeout() {
       # (~2 MB ARG_MAX) and macOS when staged files are large.
       # See: https://github.com/Gentleman-Programming/gentleman-guardian-angel/issues/78
       local _claude_tmpfile
-      _claude_tmpfile=$(mktemp) || { echo "gga: mktemp failed" >&2; return 1; }
+      _claude_tmpfile=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_claude_XXXXXX") || { echo "gga: mktemp failed" >&2; return 1; }
       printf '%s' "$prompt" > "$_claude_tmpfile"
       execute_with_timeout "$timeout" "Claude" \
         bash -c 'claude --print 2>&1 < "$1"' -- "$_claude_tmpfile"
