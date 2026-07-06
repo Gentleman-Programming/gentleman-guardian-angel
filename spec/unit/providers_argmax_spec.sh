@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 
 # Tests for ARG_MAX fix - execute_provider_with_timeout should handle large prompts
-# via temp files for CLI providers (claude, gemini, codex, opencode, cursor, kilo).
+# via temp files for CLI providers (claude, gemini, codex, opencode, cursor, kilo, kiro).
 # Related issues: #77 (macOS), #87 (Windows), #58, #85
 
 Describe 'providers.sh ARG_MAX handling'
@@ -26,6 +26,7 @@ Describe 'providers.sh ARG_MAX handling'
     opencode() { cat; }
     gemini() { cat; }
     kilo() { cat; }
+    kiro-cli() { cat; }
 
     It 'writes prompt to temp file for claude'
       When call execute_provider_with_timeout "claude" "test prompt" 300
@@ -69,6 +70,13 @@ Describe 'providers.sh ARG_MAX handling'
       The output should include "TIMEOUT:300:Kilo"
       The output should include "bash -c"
       The output should include "kilo run --auto"
+    End
+
+    It 'writes prompt to temp file for kiro'
+      When call execute_provider_with_timeout "kiro" "test prompt" 300
+      The output should include "TIMEOUT:300:Kiro"
+      The output should include "bash -c"
+      The output should include "kiro-cli chat --no-interactive"
     End
 
     It 'handles large prompts without ARG_MAX errors'

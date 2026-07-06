@@ -112,7 +112,22 @@ fi
 cat
 FAKE
 
-    chmod +x "$TEST_BIN_DIR/claude" "$TEST_BIN_DIR/gemini" "$TEST_BIN_DIR/codex" "$TEST_BIN_DIR/opencode" "$TEST_BIN_DIR/cursor-agent" "$TEST_BIN_DIR/kilo"
+    cat > "$TEST_BIN_DIR/kiro-cli" <<'FAKE'
+#!/usr/bin/env bash
+if [[ "$1" != "chat" || "$2" != "--no-interactive" ]]; then
+  echo "unexpected kiro args: $*" >&2
+  exit 64
+fi
+shift 2
+if [[ $# -ne 1 ]]; then
+  echo "missing kiro headless instruction: $*" >&2
+  exit 64
+fi
+echo "KIRO_INSTRUCTION:$1"
+cat
+FAKE
+
+    chmod +x "$TEST_BIN_DIR/claude" "$TEST_BIN_DIR/gemini" "$TEST_BIN_DIR/codex" "$TEST_BIN_DIR/opencode" "$TEST_BIN_DIR/cursor-agent" "$TEST_BIN_DIR/kilo" "$TEST_BIN_DIR/kiro-cli"
   }
   BeforeEach 'setup'
 
@@ -200,6 +215,15 @@ FAKE
     The output should include "line 1"
     The output should include "line 2"
     The stderr should include "Waiting for Kilo"
+  End
+
+  It 'passes the full prompt to kiro via stdin with only a small instruction arg'
+    When call execute_provider_with_timeout "kiro" $'line 1\nline 2' 5
+    The status should be success
+    The output should include "KIRO_INSTRUCTION:Review the complete GGA prompt provided on stdin"
+    The output should include "line 1"
+    The output should include "line 2"
+    The stderr should include "Waiting for Kiro"
   End
 
   It 'passes opencode variant and agent flags while keeping prompt on stdin'
