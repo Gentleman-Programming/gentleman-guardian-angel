@@ -6,7 +6,35 @@ Full version history for Gentleman Guardian Angel.
 
 ---
 
-## v2.8.0 (Latest)
+## v2.9.0 (Latest)
+
+- ✅ **feat(providers)**: Added Cursor Agent, Kilo, and MiniMax provider support
+  - `PROVIDER="cursor[:model]"` for Cursor Agent CLI, including legacy `agent` fallback
+  - `PROVIDER="kilo[:model]"` for Kilo CLI with non-interactive stdin prompt handoff
+  - `PROVIDER="minimax[:model]"` for MiniMax Chat Completions API, defaulting to `MiniMax-M3`
+- ✅ **fix(providers)**: Hardened large-prompt handling across CLI and API providers
+  - CLI providers use stdin/temp-file handoff to avoid ARG_MAX failures
+  - Ollama API, LM Studio, GitHub Models, and MiniMax send JSON payloads through curl stdin
+  - MiniMax keeps API keys out of curl argv by using a temporary curl config file
+- ✅ **fix(timeout)**: Provider timeout cleanup now terminates child processes that survive `TERM`
+- ✅ **fix(windows)**: Improved Windows/Git Bash reliability
+  - Normalize Windows-style `APPDATA`, `XDG_CONFIG_HOME`, and `LOCALAPPDATA` paths with `cygpath` when available
+  - Load CRLF and UTF-8 BOM `.gga` config files without modifying user files
+  - Add installed-library fallback for stale or mixed Windows/WSL `LIB_DIR` paths
+  - Fix literal ANSI escape rendering in help output
+- ✅ **fix(run)**: Hardened Codex final-message output and STATUS parsing from previous provider work
+- ✅ CI green for lint, unit tests, integration tests, and PR validation
+
+---
+
+## v2.8.1
+
+- ✅ **fix(release)**: Replace hardcoded version with release-injected version support
+- ✅ **ci(release)**: Add automated tag-based GitHub release and Homebrew tap update workflow
+
+---
+
+## v2.8.0
 
 - ✅ **feat**: Windows Git Bash support (MINGW64)
   - GGA now runs natively on Windows through Git Bash with no special configuration
