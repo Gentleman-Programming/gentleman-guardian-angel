@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 
 # Tests for ARG_MAX fix - execute_provider_with_timeout should handle large prompts
-# via temp files for CLI providers (claude, gemini, codex, opencode).
+# via temp files for CLI providers (claude, gemini, codex, opencode, cursor, kilo).
 # Related issues: #77 (macOS), #87 (Windows), #58, #85
 
 Describe 'providers.sh ARG_MAX handling'
@@ -25,6 +25,7 @@ Describe 'providers.sh ARG_MAX handling'
     codex() { cat; }
     opencode() { cat; }
     gemini() { cat; }
+    kilo() { cat; }
 
     It 'writes prompt to temp file for claude'
       When call execute_provider_with_timeout "claude" "test prompt" 300
@@ -61,6 +62,13 @@ Describe 'providers.sh ARG_MAX handling'
       The output should include "TIMEOUT:300:Gemini"
       The output should include "bash -c"
       The output should include "exec gemini -p"
+    End
+
+    It 'writes prompt to temp file for kilo'
+      When call execute_provider_with_timeout "kilo" "test prompt" 300
+      The output should include "TIMEOUT:300:Kilo"
+      The output should include "bash -c"
+      The output should include "kilo run --auto"
     End
 
     It 'handles large prompts without ARG_MAX errors'
@@ -141,9 +149,8 @@ Describe 'providers.sh ARG_MAX handling'
   End
 
   Describe 'execute_provider_with_timeout() - API providers unchanged'
-    # API-based providers (ollama, lmstudio) are intentionally left on their
-    # existing execution path in this PR. Their prompt transport is covered by
-    # separate API-provider tests/issues.
+    # API-based providers (ollama, lmstudio, minimax) keep their API execution path.
+    # Their curl payload transport is covered by separate API-provider tests.
 
     It 'does not use temp file for ollama'
       # Mock execute_with_timeout to avoid progress output warnings and execute
@@ -201,6 +208,19 @@ Describe 'providers.sh ARG_MAX handling'
 
       When call execute_provider_with_timeout "lmstudio:llama-3" "test prompt" 300
       The status should eq 42
+    End
+
+    It 'does not use temp file for minimax'
+      execute_with_timeout() {
+        shift 2
+        "$@"
+      }
+      execute_minimax() {
+        echo "MINIMAX_CALLED:$1:$2"
+      }
+
+      When call execute_provider_with_timeout "minimax:MiniMax-M3" "test prompt" 300
+      The output should include "MINIMAX_CALLED:MiniMax-M3:test prompt"
     End
 
     It 'propagates exit code for generic fallback'

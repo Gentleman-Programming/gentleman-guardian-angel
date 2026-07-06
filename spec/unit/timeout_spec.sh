@@ -84,6 +84,30 @@ Describe 'execute_with_timeout()'
       The status should eq 124
       The stderr should include "Increase TIMEOUT"
     End
+
+    It 'terminates child processes after timeout'
+      local marker
+      marker=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_timeout_marker.XXXXXX")
+      rm -f "$marker"
+
+      When call execute_with_timeout 1 "TestProvider" bash -c 'sleep 3; echo done > "$1"' _ "$marker"
+      The status should eq 124
+      The stderr should include "TIMEOUT"
+      sleep 3
+      Assert [ ! -e "$marker" ]
+    End
+
+    It 'kills child processes that ignore TERM'
+      local marker
+      marker=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_timeout_marker.XXXXXX")
+      rm -f "$marker"
+
+      When call execute_with_timeout 1 "TestProvider" bash -c 'trap "" TERM; (trap "" TERM; sleep 3; echo done > "$1") & wait' _ "$marker"
+      The status should eq 124
+      The stderr should include "TIMEOUT"
+      sleep 3
+      Assert [ ! -e "$marker" ]
+    End
   End
 
   Describe 'progress feedback in non-TTY mode'
