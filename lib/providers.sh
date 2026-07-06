@@ -804,8 +804,15 @@ execute_provider_with_timeout() {
       # Only CLI providers are handled here. API-based providers keep their
       # existing execution path and should be fixed separately if needed.
       local prompt_file
-      prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX")
-      printf '%s' "$prompt" > "$prompt_file"
+      if ! prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX"); then
+        echo "Error: Failed to create temporary prompt file" >&2
+        return 1
+      fi
+      if ! printf '%s' "$prompt" > "$prompt_file"; then
+        echo "Error: Failed to write provider prompt to temporary file" >&2
+        rm -f "$prompt_file"
+        return 1
+      fi
 
       # Ensure cleanup on exit (success, error, or signal).
       # trap RETURN fires when the function returns for any reason.
@@ -813,25 +820,25 @@ execute_provider_with_timeout() {
 
       case "$base_provider" in
         claude)
-          # cat reads from file (path passed as $1), pipes to claude via stdin.
-          # Only the file path (~50 chars) is in argv, not the prompt content.
+          # The wrapper uses exec so the timeout watcher owns the provider process,
+          # not an intermediate shell or pipeline that can survive timeout cleanup.
           # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Claude" \
-            bash -c 'cat "$1" | claude --print 2>&1' _ "$prompt_file"
+            bash -c 'exec claude --print < "$1"' _ "$prompt_file"
           result=$?
           ;;
         gemini)
-          # gemini -p - reads prompt from stdin
+          # Gemini appends stdin to the non-interactive prompt value.
           # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Gemini" \
-            bash -c 'cat "$1" | gemini -p - 2>&1' _ "$prompt_file"
+            bash -c 'exec gemini -p "" < "$1"' _ "$prompt_file"
           result=$?
           ;;
         codex)
-          # codex exec - reads prompt from stdin
+          # codex exec - reads prompt from stdin.
           # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Codex" \
-            bash -c 'cat "$1" | codex exec - 2>&1' _ "$prompt_file"
+            bash -c 'exec codex exec - < "$1"' _ "$prompt_file"
           result=$?
           ;;
         opencode)
@@ -845,11 +852,11 @@ execute_provider_with_timeout() {
             # NOTE: Do NOT use '-' as opencode doesn't support explicit stdin flag.
             # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "OpenCode" \
-              bash -c 'cat "$1" | opencode run --model "$2" 2>&1' _ "$prompt_file" "$model"
+              bash -c 'exec opencode run --model "$2" < "$1"' _ "$prompt_file" "$model"
           else
             # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "OpenCode" \
-              bash -c 'cat "$1" | opencode run 2>&1' _ "$prompt_file"
+              bash -c 'exec opencode run < "$1"' _ "$prompt_file"
           fi
           result=$?
           ;;

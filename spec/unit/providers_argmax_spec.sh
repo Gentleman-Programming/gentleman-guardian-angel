@@ -29,9 +29,10 @@ Describe 'providers.sh ARG_MAX handling'
     It 'writes prompt to temp file for claude'
       When call execute_provider_with_timeout "claude" "test prompt" 300
       The output should include "TIMEOUT:300:Claude"
-      # The command should use bash -c with cat to read from temp file
+      # The command should use bash -c with exec and input redirection so the
+      # timeout watcher owns the provider process, not an intermediate pipeline.
       The output should include "bash -c"
-      The output should include "cat"
+      The output should include "exec claude --print"
     End
 
     It 'writes prompt to temp file for codex'
@@ -59,7 +60,7 @@ Describe 'providers.sh ARG_MAX handling'
       When call execute_provider_with_timeout "gemini" "test prompt" 300
       The output should include "TIMEOUT:300:Gemini"
       The output should include "bash -c"
-      The output should include "gemini -p -"
+      The output should include "exec gemini -p"
     End
 
     It 'handles large prompts without ARG_MAX errors'
@@ -125,6 +126,17 @@ Describe 'providers.sh ARG_MAX handling'
       The output should include "bash -c"
       # The model should be passed as a separate argument, not interpolated in bash -c string
       The output should include "opencode run --model"
+    End
+
+    It 'fails safely when temp file creation fails'
+      local original_temp="${TEMP:-}"
+      TEMP="/definitely/missing/gga"
+
+      When call execute_provider_with_timeout "claude" "test prompt" 300
+
+      The status should be failure
+      The stderr should include "Failed to create temporary prompt file"
+      TEMP="$original_temp"
     End
   End
 
