@@ -268,16 +268,33 @@ execute_codex() {
   return "$codex_status"
 }
 
+get_opencode_option_args() {
+  local variant="${GGA_OPENCODE_VARIANT:-${OPENCODE_VARIANT:-}}"
+  local agent="${GGA_OPENCODE_AGENT:-${OPENCODE_AGENT:-}}"
+
+  if [[ -n "$variant" ]]; then
+    printf '%s\n' "--variant" "$variant"
+  fi
+  if [[ -n "$agent" ]]; then
+    printf '%s\n' "--agent" "$agent"
+  fi
+}
+
 execute_opencode() {
   local model="$1"
   local prompt="$2"
-  
-  # OpenCode CLI accepts prompt as positional argument
-  # opencode run [message..] - message is a positional array
+  local opencode_args=()
+
+  while IFS= read -r arg; do
+    opencode_args+=("$arg")
+  done < <(get_opencode_option_args)
+
+  # OpenCode CLI accepts prompt as positional argument.
+  # The timeout path uses stdin to avoid ARG_MAX for normal GGA runs.
   if [[ -n "$model" ]]; then
-    opencode run --model "$model" "$prompt" 2>&1
+    opencode run --model "$model" "${opencode_args[@]}" -- "$prompt" 2>&1
   else
-    opencode run "$prompt" 2>&1
+    opencode run "${opencode_args[@]}" -- "$prompt" 2>&1
   fi
   return $?
 }
@@ -648,10 +665,25 @@ get_provider_info() {
       ;;
     opencode)
       local model="${provider#*:}"
-      if [[ "$model" == "$provider" ]]; then
+      local variant="${GGA_OPENCODE_VARIANT:-${OPENCODE_VARIANT:-}}"
+      local agent="${GGA_OPENCODE_AGENT:-${OPENCODE_AGENT:-}}"
+      local details=()
+
+      if [[ "$model" != "$provider" ]]; then
+        details+=("model: $model")
+      fi
+      if [[ -n "$variant" ]]; then
+        details+=("variant: $variant")
+      fi
+      if [[ -n "$agent" ]]; then
+        details+=("agent: $agent")
+      fi
+
+      if [[ ${#details[@]} -eq 0 ]]; then
         echo "OpenCode CLI"
       else
-        echo "OpenCode CLI (model: $model)"
+        local IFS=', '
+        echo "OpenCode CLI (${details[*]})"
       fi
       ;;
     ollama)
@@ -870,20 +902,25 @@ execute_provider_with_timeout() {
           ;;
         opencode)
           local model="${provider#*:}"
+          local opencode_args=()
           if [[ "$model" == "$provider" ]]; then
             model=""
           fi
+          while IFS= read -r arg; do
+            opencode_args+=("$arg")
+          done < <(get_opencode_option_args)
+
           if [[ -n "$model" ]]; then
-            # Pass model as $2 to avoid shell injection (not interpolated in bash -c string).
+            # Pass model and option args positionally to avoid shell injection.
             # opencode run (without positional message args) reads from stdin automatically.
             # NOTE: Do NOT use '-' as opencode doesn't support explicit stdin flag.
             # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "OpenCode" \
-              bash -c 'exec opencode run --model "$2" < "$1"' _ "$prompt_file" "$model"
+              bash -c 'exec opencode run --model "$2" "${@:3}" < "$1"' _ "$prompt_file" "$model" "${opencode_args[@]}"
           else
             # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "OpenCode" \
-              bash -c 'exec opencode run < "$1"' _ "$prompt_file"
+              bash -c 'exec opencode run "${@:2}" < "$1"' _ "$prompt_file" "${opencode_args[@]}"
           fi
           result=$?
           ;;
