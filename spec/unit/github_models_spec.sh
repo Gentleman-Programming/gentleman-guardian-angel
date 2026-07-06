@@ -93,7 +93,7 @@ Describe 'providers.sh GitHub Models support'
       }
 
       # Mock curl to verify it receives the right arguments
-      # curl args: -sS -H "Content-Type: ..." -H "Authorization: Bearer ..." -d "..." URL
+      # curl args: -sS -H "Content-Type: ..." -H "Authorization: Bearer ..." --data-binary @- URL
       curl() {
         # Check all args as a single string for the key values
         local all_args="$*"
@@ -160,6 +160,25 @@ EOF
       The stderr should include "Invalid JSON"
     End
 
+    It 'sends JSON payload through stdin instead of argv'
+      gh() { echo "fake-token"; }
+      curl() {
+        local args="$*"
+        local payload
+        payload=$(cat)
+        [[ "$args" == *"--data-binary @-"* ]] || { echo "missing stdin payload flag" >&2; return 64; }
+        for arg in "$@"; do
+          [[ "$arg" != "-d" && "$arg" != "--data" && "$arg" != "--data-raw" ]] || { echo "payload passed through argv" >&2; return 64; }
+        done
+        [[ "$payload" == *"large review prompt"* ]] || { echo "missing prompt in stdin payload" >&2; return 64; }
+        echo '{"choices": [{"message": {"content": "STATUS: PASSED"}}]}'
+      }
+
+      When call execute_github_models "gpt-4o" "large review prompt"
+      The status should be success
+      The output should include "STATUS: PASSED"
+    End
+
     It 'handles response with error field'
       gh() { echo "fake-token"; }
       curl() {
@@ -197,7 +216,7 @@ EOF
       gh() { echo "fake-token"; }
       # We can verify indirectly by checking the response works
       curl() {
-        # The payload should contain the model name - curl receives it via -d
+        # The payload should contain the model name in stdin
         cat <<'EOF'
 {
   "choices": [

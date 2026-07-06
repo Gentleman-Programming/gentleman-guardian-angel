@@ -286,6 +286,24 @@ All good!"
       The output should include "STATUS: PASSED"
     End
 
+    It 'sends JSON payload through stdin instead of argv'
+      curl() {
+        local args="$*"
+        local payload
+        payload=$(cat)
+        [[ "$args" == *"--data-binary @-"* ]] || { echo "missing stdin payload flag" >&2; return 64; }
+        for arg in "$@"; do
+          [[ "$arg" != "-d" && "$arg" != "--data" && "$arg" != "--data-raw" ]] || { echo "payload passed through argv" >&2; return 64; }
+        done
+        [[ "$payload" == *"large review prompt"* ]] || { echo "missing prompt in stdin payload" >&2; return 64; }
+        echo '{"response": "STATUS: PASSED"}'
+      }
+
+      When call execute_ollama_api "llama3" "large review prompt" "http://localhost:11434"
+      The status should be success
+      The output should include "STATUS: PASSED"
+    End
+
     It 'handles invalid JSON response'
       curl() {
         echo 'not valid json'
@@ -453,6 +471,24 @@ EOF
       The output should include "STATUS: PASSED"
     End
 
+    It 'sends JSON payload through stdin instead of argv'
+      curl() {
+        local args="$*"
+        local payload
+        payload=$(cat)
+        [[ "$args" == *"--data-binary @-"* ]] || { echo "missing stdin payload flag" >&2; return 64; }
+        for arg in "$@"; do
+          [[ "$arg" != "-d" && "$arg" != "--data" && "$arg" != "--data-raw" ]] || { echo "payload passed through argv" >&2; return 64; }
+        done
+        [[ "$payload" == *"large review prompt"* ]] || { echo "missing prompt in stdin payload" >&2; return 64; }
+        echo '{"choices":[{"message":{"content":"STATUS: PASSED"}}]}'
+      }
+
+      When call execute_lmstudio_api "llama-3" "large review prompt" "http://localhost:1234/v1"
+      The status should be success
+      The output should include "STATUS: PASSED"
+    End
+
     It 'handles invalid JSON response'
       curl() {
         echo 'not valid json'
@@ -501,6 +537,26 @@ EOF
       When call execute_lmstudio_api "" "test" "http://localhost:1234/v1"
       The status should be success
       The output should eq "LOCAL_MODEL_RESPONSE"
+    End
+  End
+
+  Describe 'execute_lmstudio_api_fallback()'
+    It 'sends JSON payload through stdin instead of argv'
+      curl() {
+        local args="$*"
+        local payload
+        payload=$(cat)
+        [[ "$args" == *"--data-binary @-"* ]] || { echo "missing stdin payload flag" >&2; return 64; }
+        for arg in "$@"; do
+          [[ "$arg" != "-d" && "$arg" != "--data" && "$arg" != "--data-raw" ]] || { echo "payload passed through argv" >&2; return 64; }
+        done
+        [[ "$payload" == *"large review prompt"* ]] || { echo "missing prompt in stdin payload" >&2; return 64; }
+        echo '{"choices":[{"message":{"content":"STATUS: PASSED"}}]}'
+      }
+
+      When call execute_lmstudio_api_fallback "llama-3" "large review prompt" "http://localhost:1234/v1"
+      The status should be success
+      The output should include "STATUS: PASSED"
     End
   End
 
