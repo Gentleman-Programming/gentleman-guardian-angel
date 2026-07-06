@@ -3,6 +3,32 @@
 Describe 'cache.sh'
   Include "$LIB_DIR/cache.sh"
 
+  Describe 'normalize_bash_path()'
+    It 'converts Windows paths with cygpath when available'
+      cygpath() {
+        [[ "$1" == "-u" ]] || return 1
+        echo "/c/Users/Test/AppData/Local"
+      }
+
+      When call normalize_bash_path 'C:\Users\Test\AppData\Local'
+      The output should eq "/c/Users/Test/AppData/Local"
+    End
+
+    It 'falls back to the original path when cygpath fails'
+      cygpath() {
+        return 1
+      }
+
+      When call normalize_bash_path 'C:\Bad\Path'
+      The output should eq 'C:\Bad\Path'
+    End
+
+    It 'leaves POSIX paths unchanged'
+      When call normalize_bash_path "/tmp/cache"
+      The output should eq "/tmp/cache"
+    End
+  End
+
   Describe 'get_file_hash()'
     setup() {
       TEMP_DIR=$(mktemp -d)

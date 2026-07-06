@@ -10,10 +10,24 @@
 #   - Config file (.gga) changes
 # ============================================================================
 
+normalize_bash_path() {
+  local path="$1"
+  local converted
+
+  if [[ -n "$path" && "$path" =~ ^[A-Za-z]:\\ ]] && command -v cygpath >/dev/null 2>&1; then
+    if converted=$(cygpath -u "$path" 2>/dev/null); then
+      printf '%s\n' "$converted"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "$path"
+}
+
 if [[ -n "${LOCALAPPDATA:-}" ]]; then
-  CACHE_DIR="${LOCALAPPDATA}/gga/cache"
+  CACHE_DIR="$(normalize_bash_path "$LOCALAPPDATA")/gga/cache"
 elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then
-  CACHE_DIR="${XDG_CACHE_HOME}/gga"
+  CACHE_DIR="$(normalize_bash_path "$XDG_CACHE_HOME")/gga"
 else
   CACHE_DIR="$HOME/.cache/gga"
 fi
