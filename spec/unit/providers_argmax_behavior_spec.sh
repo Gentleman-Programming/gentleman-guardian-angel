@@ -52,10 +52,22 @@ if [[ "${1:-}" == "--model" ]]; then
   echo "MODEL:$2"
   shift 2
 fi
-if [[ $# -ne 0 ]]; then
-  echo "unexpected opencode positional prompt: $*" >&2
-  exit 64
-fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --variant)
+      echo "VARIANT:$2"
+      shift 2
+      ;;
+    --agent)
+      echo "AGENT:$2"
+      shift 2
+      ;;
+    *)
+      echo "unexpected opencode positional prompt: $*" >&2
+      exit 64
+      ;;
+  esac
+done
 cat
 FAKE
 
@@ -70,6 +82,7 @@ FAKE
     unset GGA_NO_SPINNER
     unset TEST_BIN_DIR
     unset ORIGINAL_PATH
+    unset OPENCODE_VARIANT GGA_OPENCODE_VARIANT OPENCODE_AGENT GGA_OPENCODE_AGENT
   }
   AfterEach 'cleanup'
 
@@ -111,6 +124,38 @@ FAKE
     The output should include "MODEL:test-model"
     The output should include "line 1"
     The output should include "line 2"
+    The stderr should include "Waiting for OpenCode"
+  End
+
+  It 'passes opencode variant and agent flags while keeping prompt on stdin'
+    OPENCODE_VARIANT="high"
+    OPENCODE_AGENT="gga-reviewer"
+
+    When call execute_provider_with_timeout "opencode:test-model" $'line 1\nline 2' 5
+
+    The status should be success
+    The output should include "MODEL:test-model"
+    The output should include "VARIANT:high"
+    The output should include "AGENT:gga-reviewer"
+    The output should include "line 1"
+    The output should include "line 2"
+    The stderr should include "Waiting for OpenCode"
+  End
+
+  It 'prefers GGA-prefixed opencode flag overrides with stdin handoff'
+    OPENCODE_VARIANT="low"
+    GGA_OPENCODE_VARIANT="max"
+    OPENCODE_AGENT="default-agent"
+    GGA_OPENCODE_AGENT="override-agent"
+
+    When call execute_provider_with_timeout "opencode" "test prompt" 5
+
+    The status should be success
+    The output should include "VARIANT:max"
+    The output should include "AGENT:override-agent"
+    The output should include "test prompt"
+    The output should not include "VARIANT:low"
+    The output should not include "AGENT:default-agent"
     The stderr should include "Waiting for OpenCode"
   End
 End
