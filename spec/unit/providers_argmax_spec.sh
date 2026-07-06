@@ -88,6 +88,7 @@ Describe 'providers.sh ARG_MAX handling'
 
       # Should be the same (temp file was cleaned up)
       Assert [ "$after_count" -eq "$before_count" ]
+      The output should include "TIMEOUT:300:Claude"
       rm -rf "$test_temp"
     End
 
@@ -128,11 +129,17 @@ Describe 'providers.sh ARG_MAX handling'
   End
 
   Describe 'execute_provider_with_timeout() - API providers unchanged'
-    # API-based providers (ollama, lmstudio) don't need temp files
-    # because they use curl/HTTP and don't have argv limits
+    # API-based providers (ollama, lmstudio) are intentionally left on their
+    # existing execution path in this PR. Their prompt transport is covered by
+    # separate API-provider tests/issues.
 
     It 'does not use temp file for ollama'
-      # Mock execute_ollama to capture it was called directly
+      # Mock execute_with_timeout to avoid progress output warnings and execute
+      # the wrapped provider command directly.
+      execute_with_timeout() {
+        shift 2
+        "$@"
+      }
       execute_ollama() {
         echo "OLLAMA_CALLED:$1:$2"
       }
@@ -143,6 +150,10 @@ Describe 'providers.sh ARG_MAX handling'
     End
 
     It 'does not use temp file for lmstudio'
+      execute_with_timeout() {
+        shift 2
+        "$@"
+      }
       execute_lmstudio() {
         echo "LMSTUDIO_CALLED:$1:$2"
       }

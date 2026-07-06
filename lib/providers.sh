@@ -801,8 +801,8 @@ execute_provider_with_timeout() {
     claude|gemini|codex|opencode)
       # Write prompt to temp file ONCE to avoid ARG_MAX limits.
       # This is critical for large PRs that generate prompts > 128KB-256KB.
-      # Only CLI providers need this; API-based providers (ollama, lmstudio)
-      # use curl/HTTP and don't have argv limits.
+      # Only CLI providers are handled here. API-based providers keep their
+      # existing execution path and should be fixed separately if needed.
       local prompt_file
       prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_prompt.XXXXXX")
       printf '%s' "$prompt" > "$prompt_file"
