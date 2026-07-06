@@ -1,54 +1,11 @@
 # shellcheck shell=bash
 
 Describe 'STATUS parsing (Issue #18)'
-  # Test the status parsing logic directly
-  # The parsing should find exactly one STATUS verdict in the first 30 lines,
-  # accept markdown formatting like **STATUS: PASSED**, and treat
-  # conflicting verdicts as ambiguous.
+  # Exercise the production parser from bin/gga without running main().
+  eval "$(awk '/^parse_review_status\(\)/,/^}/' "$PROJECT_ROOT/bin/gga")"
 
   parse_status() {
-    local response="$1"
-    local max_lines="${2:-30}"
-    local line_no=0
-    local found_status=""
-    local line
-
-    while IFS= read -r line; do
-      line_no=$((line_no + 1))
-      if [[ "$line_no" -gt "$max_lines" ]]; then
-        break
-      fi
-
-      line=$(printf '%s' "$line" | sed $'s/\x1b\[[0-9;]*[mK]//g')
-      line="${line#"${line%%[![:space:]]*}"}"
-      line="${line%"${line##*[![:space:]]}"}"
-      line="${line#\*\*}"
-      line="${line%\*\*}"
-      line="${line#\*}"
-      line="${line%\*}"
-      line="${line#\`}"
-      line="${line%\`}"
-      line="${line#\# }"
-      line="${line#> }"
-
-      if [[ "$line" =~ ^STATUS:[[:space:]]*(PASSED|FAILED)([^[:alnum:]_].*)?$ ]]; then
-        local candidate="${BASH_REMATCH[1]}"
-        if [[ -z "$found_status" ]]; then
-          found_status="$candidate"
-        elif [[ "$found_status" != "$candidate" ]]; then
-          echo "AMBIGUOUS"
-          return 1
-        fi
-      fi
-    done <<< "$response"
-
-    if [[ -n "$found_status" ]]; then
-      echo "$found_status"
-      return 0
-    fi
-
-    echo "AMBIGUOUS"
-    return 1
+    parse_review_status "$@"
   }
 
   Describe 'STATUS on first line'
