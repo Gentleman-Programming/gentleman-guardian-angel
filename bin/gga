@@ -158,7 +158,7 @@ check_update() {
     local c="${current_parts[$i]:-0}"
     if (( l > c )); then
       echo -e "${YELLOW}  Update available: v${current} → v${latest}${NC}"
-      echo -e "${YELLOW}  brew update && brew upgrade gga${NC}"
+      echo -e "${YELLOW}  Run 'gga upgrade' to update${NC}"
       return 0
     elif (( l < c )); then
       return 0
@@ -192,6 +192,7 @@ print_help() {
   echo "  cache clear       Clear cache for current project"
   echo "  cache clear-all   Clear all cached data"
   echo "  cache status      Show cache status"
+  echo "  upgrade           Upgrade gga to the latest version"
   echo "  help              Show this help message"
   echo "  version           Show version"
   echo ""
@@ -629,6 +630,33 @@ cmd_uninstall() {
   fi
   
   echo ""
+}
+
+cmd_upgrade() {
+  print_banner
+  log_info "Upgrading Gentleman Guardian Angel..."
+
+  # Special handling for Homebrew users on Mac/Linux
+  if [[ "$GGA_OS" != "windows" ]] && command -v brew >/dev/null 2>&1 && brew list gga >/dev/null 2>&1; then
+    log_info "Homebrew installation detected. Upgrading via brew..."
+    brew update && brew upgrade gga
+    return
+  fi
+
+  local temp_dir
+  temp_dir=$(mktemp -d)
+  if git clone https://github.com/Gentleman-Programming/gentleman-guardian-angel.git "$temp_dir" >/dev/null 2>&1; then
+    cd "$temp_dir" || exit 1
+    if bash install.sh >/dev/null; then
+      log_success "GGA successfully upgraded!"
+    else
+      log_error "Upgrade failed during installation."
+    fi
+    cd - >/dev/null || exit 1
+    rm -rf "$temp_dir"
+  else
+    log_error "Failed to clone repository for upgrade."
+  fi
 }
 
 # Helper function to uninstall GGA from a specific hook file
@@ -1349,6 +1377,9 @@ main() {
       ;;
     init)
       cmd_init
+      ;;
+    upgrade)
+      cmd_upgrade
       ;;
     cache)
       shift
