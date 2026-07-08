@@ -34,6 +34,12 @@ Describe 'install.sh'
       The path "$TEMP_DIR/.local/share/gga/lib/pr_mode.sh" should be file
     End
 
+    It 'rewrites only the top-level LIB_DIR assignment'
+      When call env HOME="$TEMP_DIR" GGA_TEST_OS="windows" bash -c 'echo "y" | bash "$1/install.sh" >/dev/null; installed="$HOME/bin/gga"; printf "top_level_assignments=%s\n" "$(grep -c "^LIB_DIR=" "$installed")"; grep -F "if ! LIB_DIR=\$(resolve_lib_dir \"\$LIB_DIR\"); then" "$installed"' _ "$PROJECT_ROOT"
+      The output should include 'top_level_assignments=1'
+      The output should include 'if ! LIB_DIR=$(resolve_lib_dir "$LIB_DIR"); then'
+    End
+
     It 'creates a cmd.exe wrapper on Windows'
       HOME="$TEMP_DIR" GGA_TEST_OS="windows" \
         bash -c 'echo "y" | bash "$1/install.sh"' _ "$PROJECT_ROOT" 2>/dev/null

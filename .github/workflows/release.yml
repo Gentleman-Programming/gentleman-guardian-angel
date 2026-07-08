@@ -31,7 +31,7 @@ jobs:
 
           # Inject version for tests (same as Homebrew will do)
           export GGA_VERSION="${{ steps.version.outputs.version }}"
-          shellspec spec/unit
+          shellspec spec/unit spec/integration/install_script_spec.sh
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -74,9 +74,11 @@ jobs:
                 /VERSION=.*\{GGA_VERSION:-dev\}.*/,
                 "VERSION=\"#{version}\""
 
-              # Update LIB_DIR path in the installed script
+              # Update only the top-level LIB_DIR assignment in the installed script.
+              # Do not match runtime assignments such as:
+              #   if ! LIB_DIR=$(resolve_lib_dir "$LIB_DIR"); then
               inreplace bin/"gga",
-                /LIB_DIR=.*/,
+                /^LIB_DIR=.*/,
                 "LIB_DIR=\"#{libexec}/lib\""
             end
 
@@ -88,6 +90,13 @@ jobs:
 
           # Remove leading whitespace from heredoc
           sed -i 's/^          //' /tmp/gga.rb
+
+          # Guard against broad LIB_DIR rewrites that corrupt the runtime resolver if statement.
+          grep -F '/^LIB_DIR=.*/' /tmp/gga.rb
+          if grep -F '/LIB_DIR=.*/' /tmp/gga.rb; then
+            echo "Formula LIB_DIR rewrite must be anchored with ^LIB_DIR=" >&2
+            exit 1
+          fi
 
           # Push to homebrew-tap
           cd /tmp

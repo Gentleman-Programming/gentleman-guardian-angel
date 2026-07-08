@@ -6,7 +6,13 @@ Full version history for Gentleman Guardian Angel.
 
 ---
 
-## v2.10.0 (Latest)
+## v2.10.1 (Latest)
+
+- ✅ **fix(install)**: Anchor the `LIB_DIR` installer rewrite so Homebrew installs only patch the top-level assignment and do not corrupt the runtime resolver `if` statement.
+
+---
+
+## v2.10.0
 
 - ✅ **feat(providers)**: Added Kiro CLI provider support
   - `PROVIDER="kiro"` for Kiro CLI headless review

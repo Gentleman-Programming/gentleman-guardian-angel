@@ -68,7 +68,7 @@ jobs:
           echo "$HOME/.local/lib/shellspec" >> $GITHUB_PATH
 
       - name: Run integration tests (excluding Ollama)
-        run: shellspec spec/integration/commands_spec.sh
+        run: shellspec spec/integration/commands_spec.sh spec/integration/install_script_spec.sh
 
   # ============================================================================
   # All Tests Summary - Required for branch protection

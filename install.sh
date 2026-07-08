@@ -138,7 +138,7 @@ if [[ -n "$GIT_VERSION" ]]; then
 fi
 
 # Update LIB_DIR path in installed script
-sed_in_place "s|LIB_DIR=.*|LIB_DIR=\"$LIB_INSTALL_DIR\"|" "$INSTALL_DIR/gga"
+sed_in_place "s|^LIB_DIR=.*|LIB_DIR=\"$LIB_INSTALL_DIR\"|" "$INSTALL_DIR/gga"
 
 # Make executable
 chmod +x "$INSTALL_DIR/gga"
