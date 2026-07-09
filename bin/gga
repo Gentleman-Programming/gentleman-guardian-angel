@@ -270,7 +270,24 @@ sanitize_config_file() {
 
   # Strip UTF-8 BOM from the first line and CR from CRLF files before sourcing.
   # This keeps Windows-edited .gga files readable without modifying user files.
-  sed $'1s/^\xef\xbb\xbf//' "$config_file" | tr -d '\r'
+  sed $'1s/^\xef\xbb\xbf//' "$config_file" | tr -d '\015'
+}
+
+source_config_file() {
+  local config_file="$1"
+  local sanitized_config
+
+  sanitized_config=$(mktemp "${TMPDIR:-/tmp}/gga-config.XXXXXX")
+  sanitize_config_file "$config_file" > "$sanitized_config"
+
+  # shellcheck source=/dev/null
+  if source "$sanitized_config"; then
+    rm -f "$sanitized_config"
+    return 0
+  fi
+
+  rm -f "$sanitized_config"
+  return 1
 }
 
 load_config() {
@@ -288,15 +305,13 @@ load_config() {
   # Load global config first (platform-aware path)
   GLOBAL_CONFIG=$(get_global_config_path)
   if [[ -f "$GLOBAL_CONFIG" ]]; then
-    # shellcheck source=/dev/null
-    source <(sanitize_config_file "$GLOBAL_CONFIG")
+    source_config_file "$GLOBAL_CONFIG"
   fi
 
   # Load project config (overrides global)
   PROJECT_CONFIG=".gga"
   if [[ -f "$PROJECT_CONFIG" ]]; then
-    # shellcheck source=/dev/null
-    source <(sanitize_config_file "$PROJECT_CONFIG")
+    source_config_file "$PROJECT_CONFIG"
   fi
 
   # Environment variable overrides everything

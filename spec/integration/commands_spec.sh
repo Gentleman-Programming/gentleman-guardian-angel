@@ -183,6 +183,23 @@ Describe 'gga commands'
       The output should include "claude"
     End
 
+    Describe 'CRLF provider parsing'
+      Parameters
+        "lmstudio"
+        "lmstudio:qwen/qwen3.5-9b"
+        "minimax:MiniMax-M3"
+      End
+
+      It 'preserves provider variable name and value while stripping CRLF characters'
+        printf 'PROVIDER="%s"\r\nFILE_PATTERNS="*.sh"\r\n' "$1" > .gga
+        When call gga config
+        The status should be success
+        The output should include "PROVIDER:"
+        The output should include "$1"
+        The output should include "*.sh"
+      End
+    End
+
     It 'loads project config with CRLF line endings'
       printf 'PROVIDER="claude"\r\nFILE_PATTERNS="*.sh"\r\n' > .gga
       When call gga config
