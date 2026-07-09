@@ -616,6 +616,37 @@ report_lmstudio_request_failure() {
   fi
 }
 
+call_lmstudio_curl() {
+  local endpoint="$1"
+  local json_payload="$2"
+  local curl_output
+  local curl_status
+  local status_marker=$'\n__GGA_HTTP_STATUS:'
+
+  LMSTUDIO_CURL_RESPONSE=""
+  LMSTUDIO_CURL_HTTP_STATUS=""
+
+  curl_output=$(printf '%s' "$json_payload" | curl -sS --fail-with-body \
+    -H "Content-Type: application/json" \
+    --data-binary @- \
+    -w $'\n__GGA_HTTP_STATUS:%{http_code}' \
+    "$endpoint" 2>&1)
+  curl_status=$?
+
+  LMSTUDIO_CURL_RESPONSE="$curl_output"
+  if [[ "$curl_output" == *"$status_marker"* ]]; then
+    LMSTUDIO_CURL_HTTP_STATUS="${curl_output##*"$status_marker"}"
+    LMSTUDIO_CURL_RESPONSE="${curl_output%%"$status_marker"*}"
+  fi
+
+  if [[ $curl_status -ne 0 ]]; then
+    report_lmstudio_request_failure "$endpoint" "$curl_status" "$LMSTUDIO_CURL_HTTP_STATUS" "$LMSTUDIO_CURL_RESPONSE"
+    return 1
+  fi
+
+  return 0
+}
+
 execute_lmstudio_api() {
   local model="$1"
   local prompt="$2"
@@ -650,28 +681,10 @@ print(payload)
 
   local endpoint="${host}/chat/completions"
 
-  # Call LM Studio API. Send the payload through stdin so large prompts do not
-  # travel through argv and hit ARG_MAX on Git Bash/MSYS or macOS.
-  local curl_output
-  curl_output=$(printf '%s' "$json_payload" | curl -sS --fail-with-body \
-    -H "Content-Type: application/json" \
-    --data-binary @- \
-    -w $'\n__GGA_HTTP_STATUS:%{http_code}' \
-    "$endpoint" 2>&1)
-
-  local curl_status=$?
-  local api_response="$curl_output"
-  local http_status=""
-  local status_marker=$'\n__GGA_HTTP_STATUS:'
-  if [[ "$curl_output" == *"$status_marker"* ]]; then
-    http_status="${curl_output##*"$status_marker"}"
-    api_response="${curl_output%%"$status_marker"*}"
-  fi
-
-  if [[ $curl_status -ne 0 ]]; then
-    report_lmstudio_request_failure "$endpoint" "$curl_status" "$http_status" "$api_response"
+  if ! call_lmstudio_curl "$endpoint" "$json_payload"; then
     return 1
   fi
+  local api_response="$LMSTUDIO_CURL_RESPONSE"
 
   # Extract response
   printf '%s' "$api_response" | python3 -c "
@@ -733,28 +746,10 @@ execute_lmstudio_api_fallback() {
 
   local endpoint="${host}/chat/completions"
 
-  # Call LM Studio API. Send the payload through stdin so large prompts do not
-  # travel through argv and hit ARG_MAX on Git Bash/MSYS or macOS.
-  local curl_output
-  curl_output=$(printf '%s' "$json_payload" | curl -sS --fail-with-body \
-    -H "Content-Type: application/json" \
-    --data-binary @- \
-    -w $'\n__GGA_HTTP_STATUS:%{http_code}' \
-    "$endpoint" 2>&1)
-
-  local curl_status=$?
-  local api_response="$curl_output"
-  local http_status=""
-  local status_marker=$'\n__GGA_HTTP_STATUS:'
-  if [[ "$curl_output" == *"$status_marker"* ]]; then
-    http_status="${curl_output##*"$status_marker"}"
-    api_response="${curl_output%%"$status_marker"*}"
-  fi
-
-  if [[ $curl_status -ne 0 ]]; then
-    report_lmstudio_request_failure "$endpoint" "$curl_status" "$http_status" "$api_response"
+  if ! call_lmstudio_curl "$endpoint" "$json_payload"; then
     return 1
   fi
+  local api_response="$LMSTUDIO_CURL_RESPONSE"
 
   # Extract response using sed/grep
   printf '%s' "$api_response" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g; s/\\"/"/g'
