@@ -444,12 +444,31 @@ All good!"
     It 'handles curl failure'
       curl() {
         echo "Connection refused"
+        echo "__GGA_HTTP_STATUS:000"
         return 7
       }
 
       When call execute_lmstudio_api "llama-3" "test" "http://localhost:1234/v1"
       The status should be failure
-      The stderr should include "Failed to connect"
+      The stderr should include "LM Studio request failed"
+      The stderr should include "curl exit code: 7"
+      The stderr should include "HTTP status: 000"
+      The stderr should include "Connection refused"
+    End
+
+    It 'reports HTTP errors with status and response body'
+      curl() {
+        echo '{"error":{"message":"context length exceeded"}}'
+        echo "__GGA_HTTP_STATUS:500"
+        return 22
+      }
+
+      When call execute_lmstudio_api "llama-3" "test" "http://localhost:1234/v1"
+      The status should be failure
+      The stderr should include "LM Studio request failed"
+      The stderr should include "curl exit code: 22"
+      The stderr should include "HTTP status: 500"
+      The stderr should include "context length exceeded"
     End
 
     It 'parses JSON response correctly'
@@ -541,6 +560,21 @@ EOF
   End
 
   Describe 'execute_lmstudio_api_fallback()'
+    It 'reports curl failures with status and response body'
+      curl() {
+        echo '{"error":{"message":"server overloaded"}}'
+        echo "__GGA_HTTP_STATUS:503"
+        return 22
+      }
+
+      When call execute_lmstudio_api_fallback "llama-3" "test" "http://localhost:1234/v1"
+      The status should be failure
+      The stderr should include "LM Studio request failed"
+      The stderr should include "curl exit code: 22"
+      The stderr should include "HTTP status: 503"
+      The stderr should include "server overloaded"
+    End
+
     It 'sends JSON payload through stdin instead of argv'
       curl() {
         local args="$*"

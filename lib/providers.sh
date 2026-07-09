@@ -598,6 +598,24 @@ validate_lmstudio_host() {
   return 1
 }
 
+report_lmstudio_request_failure() {
+  local endpoint="$1"
+  local curl_status="$2"
+  local http_status="$3"
+  local response_body="$4"
+
+  echo "Error: LM Studio request failed at $endpoint" >&2
+  echo "curl exit code: $curl_status" >&2
+  if [[ -n "$http_status" ]]; then
+    echo "HTTP status: $http_status" >&2
+  else
+    echo "HTTP status: unknown" >&2
+  fi
+  if [[ -n "$response_body" ]]; then
+    echo "$response_body" >&2
+  fi
+}
+
 execute_lmstudio_api() {
   local model="$1"
   local prompt="$2"
@@ -634,16 +652,24 @@ print(payload)
 
   # Call LM Studio API. Send the payload through stdin so large prompts do not
   # travel through argv and hit ARG_MAX on Git Bash/MSYS or macOS.
-  local api_response
-  api_response=$(printf '%s' "$json_payload" | curl -s --fail-with-body \
+  local curl_output
+  curl_output=$(printf '%s' "$json_payload" | curl -sS --fail-with-body \
     -H "Content-Type: application/json" \
     --data-binary @- \
+    -w $'\n__GGA_HTTP_STATUS:%{http_code}' \
     "$endpoint" 2>&1)
 
   local curl_status=$?
+  local api_response="$curl_output"
+  local http_status=""
+  local status_marker=$'\n__GGA_HTTP_STATUS:'
+  if [[ "$curl_output" == *"$status_marker"* ]]; then
+    http_status="${curl_output##*"$status_marker"}"
+    api_response="${curl_output%%"$status_marker"*}"
+  fi
+
   if [[ $curl_status -ne 0 ]]; then
-    echo "Error: Failed to connect to LM Studio at $host" >&2
-    echo "$api_response" >&2
+    report_lmstudio_request_failure "$endpoint" "$curl_status" "$http_status" "$api_response"
     return 1
   fi
 
@@ -709,16 +735,24 @@ execute_lmstudio_api_fallback() {
 
   # Call LM Studio API. Send the payload through stdin so large prompts do not
   # travel through argv and hit ARG_MAX on Git Bash/MSYS or macOS.
-  local api_response
-  api_response=$(printf '%s' "$json_payload" | curl -s --fail-with-body \
+  local curl_output
+  curl_output=$(printf '%s' "$json_payload" | curl -sS --fail-with-body \
     -H "Content-Type: application/json" \
     --data-binary @- \
+    -w $'\n__GGA_HTTP_STATUS:%{http_code}' \
     "$endpoint" 2>&1)
 
   local curl_status=$?
+  local api_response="$curl_output"
+  local http_status=""
+  local status_marker=$'\n__GGA_HTTP_STATUS:'
+  if [[ "$curl_output" == *"$status_marker"* ]]; then
+    http_status="${curl_output##*"$status_marker"}"
+    api_response="${curl_output%%"$status_marker"*}"
+  fi
+
   if [[ $curl_status -ne 0 ]]; then
-    echo "Error: Failed to connect to LM Studio at $host" >&2
-    echo "$api_response" >&2
+    report_lmstudio_request_failure "$endpoint" "$curl_status" "$http_status" "$api_response"
     return 1
   fi
 
