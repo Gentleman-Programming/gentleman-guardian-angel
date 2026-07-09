@@ -208,6 +208,23 @@ Describe 'gga commands'
       The output should include "*.sh"
     End
 
+    It 'fails cleanly when temporary config creation fails'
+      echo 'PROVIDER="claude"' > .gga
+      cat > "$TEST_BIN_DIR/mktemp" <<'EOF'
+#!/usr/bin/env bash
+echo "mktemp failed" >&2
+exit 1
+EOF
+      chmod +x "$TEST_BIN_DIR/mktemp"
+
+      When call gga config
+      The status should be failure
+      The output should include "Gentleman Guardian Angel"
+      The stderr should include "mktemp failed"
+      The stderr should not include "No such file or directory"
+      The stderr should not include "source:"
+    End
+
     It 'loads project config with UTF-8 BOM'
       printf '\357\273\277PROVIDER="claude"\n' > .gga
       When call gga config

@@ -277,8 +277,14 @@ source_config_file() {
   local config_file="$1"
   local sanitized_config
 
-  sanitized_config=$(mktemp "${TMPDIR:-/tmp}/gga-config.XXXXXX")
-  sanitize_config_file "$config_file" > "$sanitized_config"
+  if ! sanitized_config=$(mktemp "${TMPDIR:-/tmp}/gga-config.XXXXXX"); then
+    return 1
+  fi
+
+  if ! sanitize_config_file "$config_file" > "$sanitized_config"; then
+    rm -f "$sanitized_config"
+    return 1
+  fi
 
   # shellcheck source=/dev/null
   if source "$sanitized_config"; then
