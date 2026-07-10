@@ -270,7 +270,7 @@ sanitize_config_file() {
 
   # Strip UTF-8 BOM from the first line and CR from CRLF files before sourcing.
   # This keeps Windows-edited .gga files readable without modifying user files.
-  sed $'1s/^\xef\xbb\xbf//' "$config_file" | tr -d '\015'
+  (set -o pipefail; sed $'1s/^\xef\xbb\xbf//' "$config_file" | tr -d '\015')
 }
 
 source_config_file() {

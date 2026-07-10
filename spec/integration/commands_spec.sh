@@ -225,6 +225,23 @@ EOF
       The stderr should not include "source:"
     End
 
+    It 'fails cleanly when config sanitization fails'
+      echo 'PROVIDER="claude"' > .gga
+      cat > "$TEST_BIN_DIR/sed" <<'EOF'
+#!/usr/bin/env bash
+echo "sed failed" >&2
+exit 1
+EOF
+      chmod +x "$TEST_BIN_DIR/sed"
+
+      When call gga config
+      The status should be failure
+      The output should include "Gentleman Guardian Angel"
+      The output should not include "Not configured"
+      The stderr should include "sed failed"
+      The stderr should not include "source:"
+    End
+
     It 'loads project config with UTF-8 BOM'
       printf '\357\273\277PROVIDER="claude"\n' > .gga
       When call gga config
