@@ -183,12 +183,63 @@ Describe 'gga commands'
       The output should include "claude"
     End
 
+    Describe 'CRLF provider parsing'
+      Parameters
+        "lmstudio"
+        "lmstudio:qwen/qwen3.5-9b"
+        "minimax:MiniMax-M3"
+      End
+
+      It 'preserves provider variable name and value while stripping CRLF characters'
+        printf 'PROVIDER="%s"\r\nFILE_PATTERNS="*.sh"\r\n' "$1" > .gga
+        When call gga config
+        The status should be success
+        The output should include "PROVIDER:"
+        The output should include "$1"
+        The output should include "*.sh"
+      End
+    End
+
     It 'loads project config with CRLF line endings'
       printf 'PROVIDER="claude"\r\nFILE_PATTERNS="*.sh"\r\n' > .gga
       When call gga config
       The status should be success
       The output should include "claude"
       The output should include "*.sh"
+    End
+
+    It 'fails cleanly when temporary config creation fails'
+      echo 'PROVIDER="claude"' > .gga
+      cat > "$TEST_BIN_DIR/mktemp" <<'EOF'
+#!/usr/bin/env bash
+echo "mktemp failed" >&2
+exit 1
+EOF
+      chmod +x "$TEST_BIN_DIR/mktemp"
+
+      When call gga config
+      The status should be failure
+      The output should include "Gentleman Guardian Angel"
+      The stderr should include "mktemp failed"
+      The stderr should not include "No such file or directory"
+      The stderr should not include "source:"
+    End
+
+    It 'fails cleanly when config sanitization fails'
+      echo 'PROVIDER="claude"' > .gga
+      cat > "$TEST_BIN_DIR/sed" <<'EOF'
+#!/usr/bin/env bash
+echo "sed failed" >&2
+exit 1
+EOF
+      chmod +x "$TEST_BIN_DIR/sed"
+
+      When call gga config
+      The status should be failure
+      The output should include "Gentleman Guardian Angel"
+      The output should not include "Not configured"
+      The stderr should include "sed failed"
+      The stderr should not include "source:"
     End
 
     It 'loads project config with UTF-8 BOM'
