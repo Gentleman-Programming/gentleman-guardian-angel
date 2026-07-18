@@ -215,6 +215,9 @@ print_help() {
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
   echo "                     Example: *.test.ts,*.spec.ts,*.d.ts"
   echo "  RULES_FILE         File containing review rules (default: AGENTS.md)"
+  echo "  RULES_FILES        Comma-separated list of rules files for multi-rules review"
+  echo "                     (takes precedence over RULES_FILE when set)"
+  echo "                     Example: AGENTS.md,AGENTS-security.md"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
   echo "  TIMEOUT            Max seconds to wait for AI response (default: 300)"
   echo "  PR_BASE_BRANCH     Base branch for --pr-mode (default: auto-detect)"
@@ -237,6 +240,7 @@ print_help() {
   echo "  GGA_TIMEOUT           Override timeout from config (seconds)"
   echo "  GGA_OPENCODE_VARIANT  Override OPENCODE_VARIANT from config"
   echo "  GGA_OPENCODE_AGENT    Override OPENCODE_AGENT from config"
+  echo "  GGA_RULES_FILE        Override rules file from config"
   echo ""
 }
 
@@ -279,6 +283,7 @@ load_config() {
   FILE_PATTERNS="$DEFAULT_FILE_PATTERNS"
   EXCLUDE_PATTERNS=""
   RULES_FILE="$DEFAULT_RULES_FILE"
+  RULES_FILES=""
   STRICT_MODE="$DEFAULT_STRICT_MODE"
   TIMEOUT="$DEFAULT_TIMEOUT"
   PR_BASE_BRANCH=""
@@ -311,6 +316,11 @@ load_config() {
   fi
   if [[ -n "${GGA_OPENCODE_AGENT:-}" ]]; then
     OPENCODE_AGENT="$GGA_OPENCODE_AGENT"
+  fi
+  if [[ -n "${GGA_RULES_FILE:-}" ]]; then
+    RULES_FILE="$GGA_RULES_FILE"
+    # Singular override takes full precedence over plural config
+    RULES_FILES=""
   fi
 }
 
@@ -356,6 +366,25 @@ cmd_config() {
     echo -e "  EXCLUDE_PATTERNS:  ${YELLOW}None${NC}"
   fi
   echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
+  if [[ -n "${RULES_FILES:-}" ]]; then
+    echo -e "  RULES_FILES:       ${CYAN}$RULES_FILES${NC}"
+    # Show each entry and whether it exists
+    local _rf_entry _rf_exists
+    IFS=',' read -ra _rf_entries <<< "$RULES_FILES"
+    for _rf_entry in "${_rf_entries[@]}"; do
+      # Trim leading/trailing whitespace
+      _rf_entry="$(echo -n "$_rf_entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      if [[ -f "$_rf_entry" ]]; then
+        _rf_exists="${GREEN}found${NC}"
+      else
+        _rf_exists="${YELLOW}missing${NC}"
+      fi
+      echo -e "    - ${CYAN}$_rf_entry${NC} [$_rf_exists]"
+    done
+    unset _rf_entries _rf_entry _rf_exists
+  else
+    echo -e "  RULES_FILES:       ${YELLOW}Not set${NC}"
+  fi
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
   echo -e "  TIMEOUT:           ${CYAN}${TIMEOUT}s${NC}"
   if [[ -n "${OPENCODE_VARIANT:-}" ]]; then
@@ -743,13 +772,218 @@ cmd_cache() {
   esac
 }
 
+# Runs a single review pass against one rules file.
+#
+# Args:
+#   $1 - rules file path to review against
+#   $2 - newline-separated list of files to review
+#   $3 - newline-separated list of files to cache on PASSED (== $2 normally)
+#   $4 - commit message file path (may be empty)
+#   $5 - "true" if PR mode, "false" otherwise
+#   $6 - "true" if CI mode, "false" otherwise
+#   $7 - "true" if diff-only PR mode, "false" otherwise
+#   $8 - PR range (empty if not PR mode)
+#   $9 - PR base ref (empty if not PR mode)
+#   $10 - "true" if cache is enabled, "false" otherwise
+#
+# Returns:
+#   0 - review PASSED (or allowed through by STRICT_MODE=false)
+#   1 - review FAILED, provider error, timeout, or ambiguous under STRICT_MODE
+run_single_review() {
+  local rules_file="$1"
+  local files_to_review="$2"
+  local files_to_cache="$3"
+  local commit_msg_file="$4"
+  local pr_mode="$5"
+  local ci_mode="$6"
+  local diff_only="$7"
+  local pr_range="$8"
+  local pr_base="$9"
+  local use_cache="${10}"
+
+  # Check rules file exists
+  if [[ ! -f "$rules_file" ]]; then
+    log_error "Rules file not found: $rules_file"
+    echo ""
+    echo "Please create a ${BOLD}$rules_file${NC} file with your coding standards."
+    echo ""
+    echo "Example content:"
+    echo "  # Code Review Rules"
+    echo "  "
+    echo "  ## TypeScript"
+    echo "  - Use const/let, never var"
+    echo "  - Prefer interfaces over types"
+    echo "  - No any types"
+    echo "  "
+    echo "  ## React"
+    echo "  - Use functional components"
+    echo "  - Prefer named exports"
+    echo ""
+    return 1
+  fi
+
+  log_info "Rules file: $rules_file"
+
+  # Initialize/validate cache for this rules file
+  local cache_initialized=false
+  if [[ "$use_cache" == true ]]; then
+    if ! is_cache_valid "$rules_file" ".gga"; then
+      log_info "Cache invalidated (rules or config changed)"
+      invalidate_cache
+    fi
+
+    init_cache "$rules_file" ".gga" > /dev/null
+    cache_initialized=true
+
+    # Filter out cached files for this rules file
+    files_to_review=$(filter_uncached_files "$files_to_review")
+
+    local total_count=0
+    local uncached_count=0
+    while IFS= read -r file; do
+      [[ -n "$file" ]] && total_count=$((total_count + 1))
+    done <<< "$files_to_cache"
+
+    while IFS= read -r file; do
+      [[ -n "$file" ]] && uncached_count=$((uncached_count + 1))
+    done <<< "$files_to_review"
+
+    local cached_count=$((total_count - uncached_count))
+    if [[ $cached_count -gt 0 ]]; then
+      log_success "$cached_count file(s) passed from cache"
+    fi
+  fi
+
+  echo -e "${BOLD}Files to review:${NC}"
+  if [[ -z "$files_to_review" ]]; then
+    echo -e "  ${GREEN}All files passed from cache!${NC}"
+    echo ""
+    log_success "CODE REVIEW PASSED (cached) for $rules_file"
+    echo ""
+    return 0
+  fi
+
+  echo "$files_to_review" | while IFS= read -r file; do
+    if [[ -n "$file" ]]; then
+      echo "  - $file"
+    fi
+  done
+  echo ""
+
+  # Read rules
+  local rules
+  rules=$(cat "$rules_file")
+
+  # Read commit message if provided (from commit-msg hook)
+  local commit_msg=""
+  if [[ -n "$commit_msg_file" && -f "$commit_msg_file" ]]; then
+    commit_msg=$(cat "$commit_msg_file")
+    log_info "Including commit message in review"
+  fi
+
+  # Build prompt based on mode
+  local prompt=""
+  if [[ "$pr_mode" == "true" ]]; then
+    local pr_diff=""
+    if [[ "$diff_only" == "true" ]]; then
+      pr_diff=$(get_pr_diff "$pr_range")
+    fi
+    prompt=$(build_pr_prompt "$rules" "$files_to_review" "$diff_only" "$pr_diff" "$pr_base")
+  else
+    local use_staged="true"
+    if [[ "$ci_mode" == "true" ]]; then
+      use_staged="false"
+    fi
+    prompt=$(build_prompt "$rules" "$files_to_review" "$use_staged" "$commit_msg")
+  fi
+
+  # Execute review with timeout and progress feedback
+  log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
+  echo ""
+
+  # Temporarily disable set -e to capture exit status properly
+  # (bash 3.2 on macOS can exit on non-zero in command substitution)
+  set +e
+  local result
+  local exec_status
+  result=$(execute_provider_with_timeout "$PROVIDER" "$prompt" "$TIMEOUT")
+  exec_status=$?
+  set -e
+
+  if [[ $exec_status -eq 124 ]]; then
+    log_error "Provider timed out after ${TIMEOUT}s"
+    echo ""
+    echo "The AI provider did not respond in time. This can happen with:"
+    echo "  - Very large changesets (many files)"
+    echo "  - Slow network or API rate limiting"
+    echo ""
+    echo "Try: Increase TIMEOUT in .gga config, or review fewer files."
+    echo ""
+    if [[ "$STRICT_MODE" == "true" ]]; then
+      return 1
+    fi
+    return 0
+  fi
+
+  if [[ $exec_status -ne 0 ]]; then
+    log_error "Provider execution failed (exit code: $exec_status)"
+    if [[ -n "$result" ]]; then
+      echo ""
+      echo "$result"
+      echo ""
+    fi
+    if [[ "$STRICT_MODE" == "true" ]]; then
+      return 1
+    fi
+    return 0
+  fi
+
+  echo "$result"
+  echo ""
+
+  # Parse result status using strict line-based parser to avoid false matches
+  # from echoed instructions (e.g., responses containing both STATUS lines).
+  local parsed_status
+  if parsed_status=$(parse_review_status "$result" 30); then
+    if [[ "$parsed_status" == "PASSED" ]]; then
+      if [[ "$cache_initialized" == true ]]; then
+        cache_files_passed "$files_to_review"
+      fi
+      log_success "CODE REVIEW PASSED for $rules_file"
+      echo ""
+      return 0
+    elif [[ "$parsed_status" == "FAILED" ]]; then
+      log_error "CODE REVIEW FAILED for $rules_file"
+      echo ""
+      echo "Fix the violations listed above before committing."
+      echo ""
+      return 1
+    fi
+  fi
+
+  log_warning "Could not determine review status for $rules_file"
+  if [[ "$STRICT_MODE" == "true" ]]; then
+    log_error "STRICT MODE: Failing due to ambiguous response"
+    echo ""
+    echo "Expected exactly one line starting with 'STATUS: PASSED' or 'STATUS: FAILED'"
+    echo "in the first 30 lines of provider output."
+    echo "Set STRICT_MODE=false in config to allow ambiguous responses"
+    echo ""
+    return 1
+  else
+    log_warning "Allowing commit (STRICT_MODE=false) for $rules_file"
+    echo ""
+    return 0
+  fi
+}
+
 cmd_run() {
   local use_cache=true
   local ci_mode=false
   local pr_mode=false
   local diff_only=false
   local commit_msg_file=""
-  
+
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
@@ -775,12 +1009,12 @@ cmd_run() {
         ;;
     esac
   done
-  
+
   # Validate flag combinations
   if ! validate_pr_mode_flags "$pr_mode" "$diff_only"; then
     exit 1
   fi
-  
+
   print_banner
   load_config
 
@@ -799,34 +1033,17 @@ cmd_run() {
     exit 1
   fi
 
-  # Check rules file exists
-  if [[ ! -f "$RULES_FILE" ]]; then
-    log_error "Rules file not found: $RULES_FILE"
-    echo ""
-    echo "Please create a ${BOLD}$RULES_FILE${NC} file with your coding standards."
-    echo ""
-    echo "Example content:"
-    echo "  # Code Review Rules"
-    echo "  "
-    echo "  ## TypeScript"
-    echo "  - Use const/let, never var"
-    echo "  - Prefer interfaces over types"
-    echo "  - No any types"
-    echo "  "
-    echo "  ## React"
-    echo "  - Use functional components"
-    echo "  - Prefer named exports"
-    echo ""
-    exit 1
-  fi
-
   log_info "Provider: $PROVIDER"
-  log_info "Rules file: $RULES_FILE"
+  if [[ -n "${RULES_FILES:-}" ]]; then
+    log_info "Rules files: $RULES_FILES"
+  else
+    log_info "Rules file: $RULES_FILE"
+  fi
   log_info "File patterns: $FILE_PATTERNS"
   if [[ -n "$EXCLUDE_PATTERNS" ]]; then
     log_info "Exclude patterns: $EXCLUDE_PATTERNS"
   fi
-  
+
   # Mode status
   if [[ "$pr_mode" == true ]]; then
     if [[ "$diff_only" == true ]]; then
@@ -837,7 +1054,7 @@ cmd_run() {
   elif [[ "$ci_mode" == true ]]; then
     log_info "Mode: ${CYAN}CI (reviewing last commit)${NC}"
   fi
-  
+
   # Cache status
   if [[ "$use_cache" == true ]]; then
     log_info "Cache: ${GREEN}enabled${NC}"
@@ -888,164 +1105,51 @@ cmd_run() {
     fi
   fi
 
-  # Initialize/validate cache
-  local files_to_review="$FILES_TO_CHECK"
-  local cache_initialized=false
-  
-  if [[ "$use_cache" == true ]]; then
-    # Check if cache is valid, if not invalidate it
-    if ! is_cache_valid "$RULES_FILE" ".gga"; then
-      log_info "Cache invalidated (rules or config changed)"
-      invalidate_cache
-    fi
-    
-    # Initialize cache
-    init_cache "$RULES_FILE" ".gga" > /dev/null
-    cache_initialized=true
-    
-    # Filter out cached files
-    files_to_review=$(filter_uncached_files "$FILES_TO_CHECK")
-    
-    # Calculate cached files
-    local total_count=0
-    local uncached_count=0
-    
-    while IFS= read -r file; do
-      [[ -n "$file" ]] && total_count=$((total_count + 1))
-    done <<< "$FILES_TO_CHECK"
-    
-    while IFS= read -r file; do
-      [[ -n "$file" ]] && uncached_count=$((uncached_count + 1))
-    done <<< "$files_to_review"
-    
-    local cached_count=$((total_count - uncached_count))
-    
-    if [[ $cached_count -gt 0 ]]; then
-      log_success "$cached_count file(s) passed from cache"
-    fi
+  # Build the list of rules files to review against.
+  # RULES_FILES (plural, comma-separated) takes precedence over RULES_FILE.
+  local -a rules_files_list=()
+  if [[ -n "${RULES_FILES:-}" ]]; then
+    IFS=',' read -ra rules_files_list <<< "$RULES_FILES"
+  else
+    rules_files_list=("$RULES_FILE")
   fi
 
-  echo -e "${BOLD}Files to review:${NC}"
-  if [[ -z "$files_to_review" ]]; then
-    echo -e "  ${GREEN}All files passed from cache!${NC}"
-    echo ""
-    log_success "CODE REVIEW PASSED (cached)"
-    echo ""
-    exit 0
-  fi
-  
-  echo "$files_to_review" | while IFS= read -r file; do
-    if [[ -n "$file" ]]; then
-      echo "  - $file"
+  # Loop over each rules file. If ANY review fails, exit 1 at the end.
+  local overall_status=0
+  local current_rules_file
+  for current_rules_file in "${rules_files_list[@]}"; do
+    # Trim leading/trailing whitespace (including tabs) from the rules file entry
+    while [[ "$current_rules_file" == [[:space:]]* ]]; do
+      current_rules_file="${current_rules_file#?}"
+    done
+    while [[ "$current_rules_file" == *[[:space:]] ]]; do
+      current_rules_file="${current_rules_file%?}"
+    done
+
+    if [[ ${#rules_files_list[@]} -gt 1 ]]; then
+      echo -e "${BOLD}━━━ Review: $current_rules_file ━━━${NC}"
+      echo ""
+    fi
+
+    if ! run_single_review \
+      "$current_rules_file" \
+      "$FILES_TO_CHECK" \
+      "$FILES_TO_CHECK" \
+      "$commit_msg_file" \
+      "$pr_mode" \
+      "$ci_mode" \
+      "$diff_only" \
+      "$pr_range" \
+      "$pr_base" \
+      "$use_cache"; then
+      overall_status=1
     fi
   done
-  echo ""
 
-  # Read rules
-  RULES=$(cat "$RULES_FILE")
-
-  # Read commit message if provided (from commit-msg hook)
-  local commit_msg=""
-  if [[ -n "$commit_msg_file" && -f "$commit_msg_file" ]]; then
-    commit_msg=$(cat "$commit_msg_file")
-    log_info "Including commit message in review"
-  fi
-
-  # Build prompt based on mode
-  if [[ "$pr_mode" == "true" ]]; then
-    # PR mode: use dedicated PR prompt builder
-    local pr_diff=""
-    if [[ "$diff_only" == "true" ]]; then
-      pr_diff=$(get_pr_diff "$pr_range")
-    fi
-    PROMPT=$(build_pr_prompt "$RULES" "$files_to_review" "$diff_only" "$pr_diff" "$pr_base")
-  else
-    # Normal/CI mode: use standard prompt builder
-    # In CI mode, read from filesystem; otherwise read from staging area
-    local use_staged="true"
-    if [[ "$ci_mode" == "true" ]]; then
-      use_staged="false"
-    fi
-    PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
-  fi
-
-  # Execute review with timeout and progress feedback
-  log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
-  echo ""
-
-  # Temporarily disable set -e to capture exit status properly
-  # (bash 3.2 on macOS can exit on non-zero in command substitution)
-  set +e
-  RESULT=$(execute_provider_with_timeout "$PROVIDER" "$PROMPT" "$TIMEOUT")
-  EXEC_STATUS=$?
-  set -e
-
-  if [[ $EXEC_STATUS -eq 124 ]]; then
-    log_error "Provider timed out after ${TIMEOUT}s"
-    echo ""
-    echo "The AI provider did not respond in time. This can happen with:"
-    echo "  - Very large changesets (many files)"
-    echo "  - Slow network or API rate limiting"
-    echo ""
-    echo "Try: Increase TIMEOUT in .gga config, or review fewer files."
-    echo ""
-    if [[ "$STRICT_MODE" == "true" ]]; then
-      exit 1
-    fi
-    exit 0
-  fi
-
-  if [[ $EXEC_STATUS -ne 0 ]]; then
-    log_error "Provider execution failed (exit code: $EXEC_STATUS)"
-    if [[ -n "$RESULT" ]]; then
-      echo ""
-      echo "$RESULT"
-      echo ""
-    fi
-    if [[ "$STRICT_MODE" == "true" ]]; then
-      exit 1
-    fi
-    exit 0
-  fi
-
-  echo "$RESULT"
-  echo ""
-
-  # Parse result status using strict line-based parser to avoid false matches
-  # from echoed instructions (e.g., responses containing both STATUS lines).
-  local parsed_status
-  if parsed_status=$(parse_review_status "$RESULT" 30); then
-    if [[ "$parsed_status" == "PASSED" ]]; then
-      # Cache the passed files
-      if [[ "$cache_initialized" == true ]]; then
-        cache_files_passed "$files_to_review"
-      fi
-      log_success "CODE REVIEW PASSED"
-      echo ""
-      exit 0
-    elif [[ "$parsed_status" == "FAILED" ]]; then
-      log_error "CODE REVIEW FAILED"
-      echo ""
-      echo "Fix the violations listed above before committing."
-      echo ""
-      exit 1
-    fi
-  fi
-
-  log_warning "Could not determine review status"
-  if [[ "$STRICT_MODE" == "true" ]]; then
-    log_error "STRICT MODE: Failing due to ambiguous response"
-    echo ""
-    echo "Expected exactly one line starting with 'STATUS: PASSED' or 'STATUS: FAILED'"
-    echo "in the first 30 lines of provider output."
-    echo "Set STRICT_MODE=false in config to allow ambiguous responses"
-    echo ""
+  if [[ $overall_status -ne 0 ]]; then
     exit 1
-  else
-    log_warning "Allowing commit (STRICT_MODE=false)"
-    echo ""
-    exit 0
   fi
+  exit 0
 }
 
 # ============================================================================

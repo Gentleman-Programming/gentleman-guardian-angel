@@ -104,22 +104,27 @@ get_project_id() {
 }
 
 # Get metadata hash (rules + config combined)
+# Includes the rules file basename so caches from different rules files
+# (e.g., AGENTS.md vs AGENTS-security.md) do not collide.
 get_metadata_hash() {
   local rules_file="$1"
   local config_file="$2"
-  
+
   local rules_hash=""
   local config_hash=""
-  
+  local rules_name=""
+
+  rules_name=$(basename "$rules_file" 2>/dev/null || echo "")
+
   if [[ -f "$rules_file" ]]; then
     rules_hash=$(get_file_hash "$rules_file")
   fi
-  
+
   if [[ -f "$config_file" ]]; then
     config_hash=$(get_file_hash "$config_file")
   fi
-  
-  get_string_hash "${rules_hash}:${config_hash}"
+
+  get_string_hash "${rules_name}:${rules_hash}:${config_hash}"
 }
 
 # Get project cache directory
