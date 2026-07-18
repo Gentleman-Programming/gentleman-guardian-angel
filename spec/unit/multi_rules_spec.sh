@@ -21,13 +21,13 @@ Describe 'multi-rules support'
     It 'returns different hashes for different rules file names with same content'
       hash1=$(get_metadata_hash "$TEMP_DIR/AGENTS.md" "$TEMP_DIR/.gga")
       hash2=$(get_metadata_hash "$TEMP_DIR/AGENTS-security.md" "$TEMP_DIR/.gga")
-      The value "$hash1" should not eq "$hash2"
+      Assert [ "$hash1" != "$hash2" ]
     End
 
     It 'returns same hash for same rules file name and content'
       hash1=$(get_metadata_hash "$TEMP_DIR/AGENTS.md" "$TEMP_DIR/.gga")
       hash2=$(get_metadata_hash "$TEMP_DIR/AGENTS.md" "$TEMP_DIR/.gga")
-      The value "$hash1" should eq "$hash2"
+      Assert [ "$hash1" = "$hash2" ]
     End
   End
 
@@ -81,7 +81,7 @@ GGAEOF
       fi
       unset GGA_RULES_FILE
 
-      The value "$RULES_FILE" should eq "AGENTS-security.md"
+      Assert [ "$RULES_FILE" = "AGENTS-security.md" ]
     End
 
     It 'RULES_FILE from .gga is used when GGA_RULES_FILE is not set'
@@ -104,7 +104,7 @@ GGAEOF
         RULES_FILE="$GGA_RULES_FILE"
       fi
 
-      The value "$RULES_FILE" should eq "AGENTS.md"
+      Assert [ "$RULES_FILE" = "AGENTS.md" ]
     End
   End
 
@@ -114,9 +114,9 @@ GGAEOF
       local -a rules_files_list=()
       IFS=',' read -ra rules_files_list <<< "$RULES_FILES"
 
-      The value "${rules_files_list[0]}" should eq "AGENTS.md"
-      The value "${rules_files_list[1]}" should eq "AGENTS-security.md"
-      The value "${#rules_files_list[@]}" should eq 2
+      Assert [ "${rules_files_list[0]}" = "AGENTS.md" ]
+      Assert [ "${rules_files_list[1]}" = "AGENTS-security.md" ]
+      Assert [ "${#rules_files_list[@]}" = 2 ]
     End
 
     It 'handles single entry in RULES_FILES'
@@ -124,8 +124,8 @@ GGAEOF
       local -a rules_files_list=()
       IFS=',' read -ra rules_files_list <<< "$RULES_FILES"
 
-      The value "${#rules_files_list[@]}" should eq 1
-      The value "${rules_files_list[0]}" should eq "AGENTS.md"
+      Assert [ "${#rules_files_list[@]}" = 1 ]
+      Assert [ "${rules_files_list[0]}" = "AGENTS.md" ]
     End
 
     It 'handles whitespace around entries'
@@ -138,7 +138,7 @@ GGAEOF
       entry="${entry## }"
       entry="${entry%% }"
 
-      The value "$entry" should eq "AGENTS-security.md"
+      Assert [ "$entry" = "AGENTS-security.md" ]
     End
 
     It 'falls back to RULES_FILE when RULES_FILES is empty'
@@ -152,8 +152,8 @@ GGAEOF
         rules_files_list=("$RULES_FILE")
       fi
 
-      The value "${#rules_files_list[@]}" should eq 1
-      The value "${rules_files_list[0]}" should eq "AGENTS.md"
+      Assert [ "${#rules_files_list[@]}" = 1 ]
+      Assert [ "${rules_files_list[0]}" = "AGENTS.md" ]
     End
   End
 End

@@ -23,6 +23,7 @@ REJECT if:
 - Session token accepted from URL parameter or query string
 - Privilege check bypass via HTTP method override (e.g., `_method=DELETE`)
 - Directory traversal via unsanitized path input (e.g., `fs.readFile(req.query.file)`)
+- Server-Side Request Forgery (SSRF): server makes outbound requests to attacker-controlled URLs (e.g., `fetch(req.query.url)` without an allow-list)
 
 PREFER:
 - Explicit allow-list for roles and permissions

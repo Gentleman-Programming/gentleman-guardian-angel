@@ -33,8 +33,8 @@ TIMEOUT="300"
 
 Behavior:
 
-```
-git commit -> gga run -> [AGENTS.md review] -> [AGENTS-security.md review] -> PASS/FAIL
+```text
+git commit -> gga run -> [AGENTS.md review] -> [AGENTS-security.md review] -> PASSED/FAILED
 ```
 
 Both reviews run automatically. If either fails, the commit is blocked.
@@ -84,7 +84,7 @@ The template covers all 10 categories from the latest OWASP release (2025):
 | A03: Injection | A05 | Moved down |
 | A05: Security Misconfiguration | A02 | Moved up |
 | A06: Vulnerable Components | A03: Supply Chain Failures | Renamed, expanded |
-| A10: SSRF | A10: Mishandling Exceptional Conditions | Replaced |
+| A10: SSRF | A01: Broken Access Control | Merged into A01 |
 
 ## Provider Recommendations for Security Review
 
@@ -92,15 +92,15 @@ Security review benefits from models with strong reasoning on code:
 
 | Model | Config Value | Strengths |
 |-------|-------------|-----------|
-| Kimi k2.7 Code | `ollama:kimi-k2.7-code:cloud` | Best coverage - detects more findings (rate limiting, insecure design). 262K context. |
-| GLM-5.2 | `ollama:glm-5.2:cloud` | Better severity classification. 1M context. Slower. |
-| DeepSeek V4 Pro | `ollama:deepseek-v4-pro:cloud` | Fastest. Clean, concise output. Good for quick feedback loops. |
+| Kimi k2.7 Code | `ollama:kimi-k2.7-code:cloud` | Large context window (262K). Reported anecdotally to surface findings others miss (e.g., rate limiting, insecure design). Not a benchmark. |
+| GLM-5.2 | `ollama:glm-5.2:cloud` | Large context window (1M). Reported anecdotally to produce more granular severity classifications. Not a benchmark. |
+| DeepSeek V4 Pro | `ollama:deepseek-v4-pro:cloud` | Reported anecdotally to produce concise output suitable for quick feedback loops. Not a benchmark. |
 
 ## Response Format
 
 The security audit template requires structured output:
 
-```
+```text
 STATUS: FAILED
 file:line - [A0X] Category - issue description - severity (CRITICAL/HIGH/MEDIUM/LOW)
 ```

@@ -319,6 +319,8 @@ load_config() {
   fi
   if [[ -n "${GGA_RULES_FILE:-}" ]]; then
     RULES_FILE="$GGA_RULES_FILE"
+    # Singular override takes full precedence over plural config
+    RULES_FILES=""
   fi
 }
 
@@ -366,6 +368,20 @@ cmd_config() {
   echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
   if [[ -n "${RULES_FILES:-}" ]]; then
     echo -e "  RULES_FILES:       ${CYAN}$RULES_FILES${NC}"
+    # Show each entry and whether it exists
+    local _rf_entry _rf_exists
+    IFS=',' read -ra _rf_entries <<< "$RULES_FILES"
+    for _rf_entry in "${_rf_entries[@]}"; do
+      # Trim leading/trailing whitespace
+      _rf_entry="$(echo -n "$_rf_entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      if [[ -f "$_rf_entry" ]]; then
+        _rf_exists="${GREEN}found${NC}"
+      else
+        _rf_exists="${YELLOW}missing${NC}"
+      fi
+      echo -e "    - ${CYAN}$_rf_entry${NC} [$_rf_exists]"
+    done
+    unset _rf_entries _rf_entry _rf_exists
   else
     echo -e "  RULES_FILES:       ${YELLOW}Not set${NC}"
   fi
@@ -1102,9 +1118,13 @@ cmd_run() {
   local overall_status=0
   local current_rules_file
   for current_rules_file in "${rules_files_list[@]}"; do
-    # Trim leading/trailing whitespace from the rules file entry
-    current_rules_file="${current_rules_file## }"
-    current_rules_file="${current_rules_file%% }"
+    # Trim leading/trailing whitespace (including tabs) from the rules file entry
+    while [[ "$current_rules_file" == [[:space:]]* ]]; do
+      current_rules_file="${current_rules_file#?}"
+    done
+    while [[ "$current_rules_file" == *[[:space:]] ]]; do
+      current_rules_file="${current_rules_file%?}"
+    done
 
     if [[ ${#rules_files_list[@]} -gt 1 ]]; then
       echo -e "${BOLD}━━━ Review: $current_rules_file ━━━${NC}"
