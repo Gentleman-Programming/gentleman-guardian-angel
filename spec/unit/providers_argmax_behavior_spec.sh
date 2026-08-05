@@ -119,11 +119,10 @@ if [[ "$1" != "chat" || "$2" != "--no-interactive" ]]; then
   exit 64
 fi
 shift 2
-if [[ $# -ne 1 ]]; then
-  echo "missing kiro headless instruction: $*" >&2
+if [[ $# -ne 0 ]]; then
+  echo "unexpected kiro positional prompt: $*" >&2
   exit 64
 fi
-echo "KIRO_INSTRUCTION:$1"
 cat
 FAKE
 
@@ -217,10 +216,9 @@ FAKE
     The stderr should include "Waiting for Kilo"
   End
 
-  It 'passes the full prompt to kiro via stdin with only a small instruction arg'
+  It 'passes the full prompt to kiro via stdin without positional prompt args'
     When call execute_provider_with_timeout "kiro" $'line 1\nline 2' 5
     The status should be success
-    The output should include "KIRO_INSTRUCTION:Review the complete GGA prompt provided on stdin"
     The output should include "line 1"
     The output should include "line 2"
     The stderr should include "Waiting for Kiro"

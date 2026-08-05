@@ -447,11 +447,9 @@ execute_kilo() {
 
 execute_kiro() {
   local prompt="$1"
-  local kiro_instruction="Review the complete GGA prompt provided on stdin and respond with the required STATUS line."
-
-  # Kiro headless mode requires a small positional prompt. The large review
-  # prompt travels through stdin as context to avoid ARG_MAX failures.
-  printf '%s' "$prompt" | kiro-cli chat --no-interactive "$kiro_instruction" 2>&1
+  # Kiro treats a positional INPUT as the entire prompt and discards stdin.
+  # The review prompt travels via stdin; it already requires the STATUS line.
+  printf '%s' "$prompt" | kiro-cli chat --no-interactive 2>&1
   return "${PIPESTATUS[1]}"
 }
 
@@ -1307,11 +1305,11 @@ execute_provider_with_timeout() {
           result=$?
           ;;
         kiro)
-          # Kiro headless mode requires a small positional prompt. The large
+          # Kiro discards stdin when a positional INPUT is present. The large
           # review prompt travels through stdin as context to avoid ARG_MAX.
           # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Kiro" \
-            bash -c 'exec kiro-cli chat --no-interactive "$2" < "$1"' _ "$prompt_file" "Review the complete GGA prompt provided on stdin and respond with the required STATUS line."
+            bash -c 'exec kiro-cli chat --no-interactive < "$1"' _ "$prompt_file"
           result=$?
           ;;
       esac

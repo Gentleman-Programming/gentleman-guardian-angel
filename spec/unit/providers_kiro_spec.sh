@@ -17,18 +17,16 @@ Describe 'providers.sh kiro support'
         return 64
       fi
       shift 2
-      if [[ $# -ne 1 ]]; then
-        echo "missing kiro headless instruction: $*" >&2
+      if [[ $# -ne 0 ]]; then
+        echo "unexpected kiro positional prompt: $*" >&2
         return 64
       fi
-      echo "INSTRUCTION:$1"
       cat
     }
 
-    It 'executes kiro with prompt through stdin and a small headless instruction'
+    It 'executes kiro with prompt through stdin and no positional prompt'
       When call execute_kiro "test prompt"
       The status should be success
-      The output should include "INSTRUCTION:Review the complete GGA prompt provided on stdin"
       The output should include "test prompt"
     End
   End
