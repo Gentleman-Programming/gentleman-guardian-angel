@@ -1231,7 +1231,12 @@ parse_review_status() {
     line="${line%\*}"
     line="${line#\`}"
     line="${line%\`}"
-    line="${line#\# }"
+    # Strip ANY markdown heading level, not just one hash. A provider that
+    # writes "## STATUS: FAILED" used to fall through to AMBIGUOUS, and with
+    # STRICT_MODE=false that ALLOWS THE COMMIT - a real rejection silently
+    # became a pass because of a formatting choice.
+    while [[ "$line" == "#"* ]]; do line="${line#\#}"; done
+    line="${line#"${line%%[![:space:]]*}"}"
     line="${line#> }"
 
     # STATUS must begin the normalized line
