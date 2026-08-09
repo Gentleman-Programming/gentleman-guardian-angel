@@ -1155,6 +1155,33 @@ execute_with_timeout() {
     echo "[TRACE] output_file=$output_file size=$(wc -c < "$output_file" 2>/dev/null || echo 0)" >&2
   fi
 
+  # Exit 126 means the provider binary could not be executed. When the prompt is
+  # oversized this is what an ARG_MAX overflow looks like from the shell, and the
+  # raw message ("Argument list too long", "bad interpreter: Permission denied")
+  # reads like a broken install rather than an oversized payload. Users reach for
+  # --no-verify, which is the one outcome a pre-commit gate cannot afford.
+  # Windows is where this bites: CreateProcess caps a command line at 32767 chars.
+  if [[ "${exit_code:-1}" -eq 126 ]] && [[ -f "$output_file" ]] &&
+     grep -qiE 'argument list too long|bad interpreter|e2big' "$output_file" 2>/dev/null; then
+    echo "" >&2
+    echo "The provider could not be started (exit 126), and the error points at the" >&2
+    echo "operating system argument limit rather than a broken install." >&2
+    echo "" >&2
+    echo "Possible causes:" >&2
+    echo "  - The prompt (rules file + contents of every matched file) exceeded ARG_MAX" >&2
+    echo "  - On Windows, CreateProcess caps a command line at 32767 characters" >&2
+    echo "  - An older gga passed the prompt through argv for this provider" >&2
+    echo "" >&2
+    echo "Solutions:" >&2
+    echo "  - Upgrade gga: recent versions send the prompt through a temp file" >&2
+    echo "  - Reduce the payload: tighten FILE_PATTERNS, or add EXCLUDE_PATTERNS" >&2
+    echo "    (lockfiles are the usual offender: a package-lock.json alone can exceed it)" >&2
+    echo "  - Commit in smaller batches so fewer files are reviewed at once" >&2
+    echo "" >&2
+    echo "If none of the above apply, the provider binary may genuinely lack execute" >&2
+    echo "permission. Run it directly to tell the two cases apart." >&2
+  fi
+
   # Output the result (stdout + stderr combined)
   if [[ -f "$output_file" ]] && [[ -s "$output_file" ]]; then
     cat "$output_file"
