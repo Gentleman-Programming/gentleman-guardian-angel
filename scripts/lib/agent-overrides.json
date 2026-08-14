@@ -1,0 +1,104 @@
+{
+  "sdd-apply": {
+    "hidden": true
+  },
+  "sdd-archive": {
+    "hidden": true
+  },
+  "sdd-design": {
+    "hidden": true
+  },
+  "sdd-explore": {
+    "hidden": true
+  },
+  "sdd-init": {
+    "hidden": true
+  },
+  "sdd-orchestrator": {
+    "extraPermKeys": {
+      "delegate": "allow",
+      "delegation_list": "allow",
+      "delegation_read": "allow",
+      "task": {
+        "*": "deny",
+        "sdd-apply": "allow",
+        "sdd-archive": "allow",
+        "sdd-design": "allow",
+        "sdd-explore": "allow",
+        "sdd-init": "allow",
+        "sdd-propose": "allow",
+        "sdd-spec": "allow",
+        "sdd-tasks": "allow",
+        "sdd-verify": "allow"
+      }
+    }
+  },
+  "sdd-propose": {
+    "hidden": true
+  },
+  "sdd-spec": {
+    "hidden": true
+  },
+  "sdd-tasks": {
+    "hidden": true
+  },
+  "sdd-verify": {
+    "hidden": true
+  },
+  "gentleman-vMK-auto": {
+    "extraPermKeys": {
+      "task": {
+        "*": "deny",
+        "gentleman-deep-sub-auto": "allow",
+        "gentleman-quick-sub-auto": "allow",
+        "gentleman-codex-sub-auto": "allow",
+        "gentleman-implementer-sub-auto": "allow",
+        "sdd-apply": "allow",
+        "sdd-archive": "allow",
+        "sdd-design": "allow",
+        "sdd-explore": "allow",
+        "sdd-init": "allow",
+        "sdd-propose": "allow",
+        "sdd-spec": "allow",
+        "sdd-tasks": "allow",
+        "sdd-verify": "allow"
+      }
+    }
+  },
+  "gentle-orchestrator": {
+    "extraPermKeys": {
+      "delegate": "allow",
+      "task": {
+        "sdd-verify": "allow",
+        "sdd-apply": "allow",
+        "gentleman-implementer-sub": "allow",
+        "*": "deny",
+        "gentleman-frontend-sub": "allow",
+        "sdd-spec": "allow",
+        "gentleman-datascience-sub": "allow",
+        "gentleman-deep-sub": "allow",
+        "sdd-propose": "allow",
+        "gentleman-quick-sub-auto": "allow",
+        "gentleman-implementer-sub-auto": "allow",
+        "gentleman-deep-sub-auto": "allow",
+        "gentleman-seo-sub": "allow",
+        "gentleman-quick-sub": "allow",
+        "sdd-tasks": "allow",
+        "sdd-archive": "allow",
+        "gentleman-docs-sub": "allow",
+        "sdd-design": "allow",
+        "sdd-explore": "allow",
+        "gentleman-performance-sub": "allow",
+        "explore": "allow",
+        "gentleman-codex-sub": "allow",
+        "gentleman-security-sub": "allow",
+        "sdd-init": "allow",
+        "gentleman-infra-sub": "allow",
+        "gentleman-codex-sub-auto": "allow",
+        "general": "allow"
+      },
+      "delegation_read": "allow",
+      "delegation_list": "allow"
+    }
+  }
+}

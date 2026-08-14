@@ -1,0 +1,38 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 4000,
+    "keep": {
+      "tokens": 8000
+    }
+  },
+  "model": "opencode/big-pickle",
+  "small_model": "opencode/free",
+  "agent": {
+    "default": {
+      "depth": 1
+    }
+  },
+  "watcher": {
+    "enabled": false
+  },
+  "snapshot": false,
+  "tools": {
+    "file": {
+      "maxBytes": 65536,
+      "maxLines": 100
+    }
+  },
+  "_resource_tier": "low",
+  "_resource_notes": [
+    "For systems with <=4GB RAM, <=2 CPU cores, no dedicated GPU",
+    "Disables file watcher to eliminate 100% CPU scans on large repos",
+    "No MCP servers loaded — each adds context tokens + subprocess overhead",
+    "subagent_depth=1 prevents recursive delegation stack growth",
+    "compaction.prune=true removes old tool outputs to save memory",
+    "snapshot.enabled=false prevents indexing overhead on large repos",
+    "Use OPENCODE_DIAGNOSTICS=1 for memory monitoring with 2GB warning + 4GB auto-kill"
+  ]
+}

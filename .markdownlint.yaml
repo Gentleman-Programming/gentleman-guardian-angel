@@ -1,0 +1,6 @@
+MD013: false
+MD033:
+  allowed_elements: [img, br, p, table, td, tr, th, thead, tbody, code, pre, span, div, details, summary, strong, em]
+MD041: false
+MD024: false
+MD012: false

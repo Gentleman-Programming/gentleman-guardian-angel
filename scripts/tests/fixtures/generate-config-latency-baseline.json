@@ -1,0 +1,10 @@
+{
+  "description": "Pinned baseline for generate-opencode-config.js --validate latency. Eliminates Gap D false positives by measuring baseline AND comparison in the SAME execution context (the test run). Methodology: 5 runs of 'node generate-opencode-config.js --validate', median in milliseconds. Threshold: 10% relative regression from pinned baseline. Baseline pinned from Cycle #3 benchmark fixture."
+,
+  "methodology": "5 runs of 'node scripts/lib/generate-opencode-config.js --validate', wall-time measured via Stopwatch, median + IQR reported. Both baseline and comparison execute in test-process context — no cross-context mismatch.",
+  "baseline_median_ms": 500,
+  "baseline_iqr_ms": 50,
+  "runs": 5,
+  "regression_threshold_pct": 10,
+  "last_updated": "2026-08-08T00:00:00Z"
+}

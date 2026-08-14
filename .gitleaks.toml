@@ -1,0 +1,54 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks/blob/master/config/config.go
+
+# Custom rules for gentleman-agent-gh
+[[rules]]
+  id = "ctx7sk-token"
+  description = "Context7 API key"
+  regex = '''ctx7sk_[A-Za-z0-9_\-]{20,}'''
+
+[[rules]]
+  id = "gh-token"
+  description = "GitHub personal access token"
+  regex = '''ghp_[A-Za-z0-9_\-]{36,}'''
+
+[[rules]]
+  id = "gh-pat"
+  description = "GitHub fine-grained PAT"
+  regex = '''github_pat_[A-Za-z0-9_\-]{82,}'''
+
+[[rules]]
+  id = "gh-app-token"
+  description = "GitHub App installation token"
+  regex = '''ghs_[A-Za-z0-9_\-]{36,}'''
+
+[[rules]]
+  id = "private-key"
+  description = "Private key (PEM)"
+  regex = '''-----BEGIN\s+(RSA|EC|DSA|OPENSSH|PRIVATE)\s+KEY-----'''
+
+[[rules]]
+  id = "generic-api-key"
+  description = "Generic API key assignment"
+  regex = '''(?:api[_-]?key|apikey|secret[_-]?key|secretkey)\s*=\s*['"][A-Za-z0-9_\-/+=]{16,}['"]'''
+
+[[rules]]
+  id = "gh-token-assign"
+  description = "GitHub token environment variable assignment"
+  regex = '''(?:GH_TOKEN|GITHUB_TOKEN)\s*=\s*['"][A-Za-z0-9_\-]{10,}['"]'''
+
+[[rules]]
+  id = "aws-access-key"
+  description = "AWS Access Key ID"
+  regex = '''AKIA[0-9A-Z]{16}'''
+
+[[rules]]
+  id = "password-assign"
+  description = "Password environment variable assignment"
+  regex = '''(?:PASSWORD|PASS|DB_PASSWORD|MYSQL_PWD|PGPASSWORD|REDIS_PASSWORD)\s*=\s*['"][^'"]{6,}['"]'''
+
+[allowlist]
+  description = "Global allowlist - path-based (works with non-stdin sources)"
+  paths = [
+    '''\.backup-.*/.*''',
+  ]

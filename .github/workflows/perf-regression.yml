@@ -1,0 +1,70 @@
+name: Performance Regression Gate
+
+# Debilidad 3 Enfoque C — CI performance regression detection.
+# Runs benchmark-regression.ps1 with sync-vmk.ps1 -DryRun, 10 samples,
+# compares median + IQR against benchmark-baseline.json.
+# Protocol: protocolo_mejora_autonoma_v3.md §0.7 (median/IQR, not single-value).
+# Threshold: 15% slower than baseline median triggers regression failure.
+
+on:
+  push:
+    branches: [ master, main, 'experimento/**' ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Benchmark — sync-vmk.ps1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run statistical benchmark (10 samples)
+        # benchmark-regression.ps1: 10 runs, calculates median + IQR,
+        # compares against docs/mejoras/benchmark-baseline.json.
+        # Exits 1 if regression > 15% vs baseline median.
+        run: |
+          $result = & ./scripts/benchmark-regression.ps1 `
+            -Command "sync-vmk.ps1 -DryRun -Json" `
+            -Runs 10 `
+            -Threshold 15 `
+            -Json 2>&1
+          Write-Output "BENCHMARK_JSON: $result"
+
+          $parsed = $result | ConvertFrom-Json -ErrorAction SilentlyContinue
+          if (-not $parsed) {
+            Write-Error "Benchmark produced no JSON output"
+            exit 1
+          }
+
+          Write-Output "Median: $($parsed.median_ms)ms"
+          Write-Output "Baseline: $($parsed.baseline_median_ms)ms"
+          Write-Output "Regression: $($parsed.regression_percent)%"
+
+          if ($parsed.regression -eq $true) {
+            Write-Error "PERFORMANCE REGRESSION: $($parsed.median_ms)ms exceeds baseline $($parsed.baseline_median_ms)ms by $($parsed.regression_percent)% (threshold: 15%)"
+            exit 1
+          }
+
+          Write-Output "OK: No performance regression (IQR: $($parsed.iqr_ms)ms)"
+
+      - name: Upload benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            docs/mejoras/benchmark-baseline.json
+            scripts/opencode-configs/
