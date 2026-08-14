@@ -1,0 +1,2659 @@
+{
+  "skills": {
+    "comment-writer": {
+      "path": ".agents/skills/comment-writer/SKILL.md",
+      "triggers": [
+        "comments",
+        "pr feedback",
+        "review comment",
+        "github comment",
+        "write feedback"
+      ],
+      "name": "comment-writer"
+    },
+    "performance-tracker": {
+      "path": ".agents/skills/performance-tracker/SKILL.md",
+      "triggers": [
+        "performance score",
+        "mobile perf",
+        "desktop perf",
+        "rendimiento",
+        "app score",
+        "lighthouse",
+        "benchmark"
+      ],
+      "name": "performance-tracker"
+    },
+    "seo": {
+      "path": ".agents/skills/seo/SKILL.md",
+      "triggers": [
+        "seo",
+        "search engine",
+        "meta tags",
+        "structured data",
+        "sitemap",
+        "search optimization",
+        "ranking",
+        "schema",
+        "robots.txt",
+        "meta description",
+        "eeat",
+        "e-e-a-t",
+        "ai overview",
+        "sge",
+        "ai mode",
+        "generative search",
+        "aeo",
+        "geo",
+        "inp",
+        "google core update",
+        "ga4",
+        "topical authority",
+        "content cluster"
+      ],
+      "name": "seo"
+    },
+    "issue-creation": {
+      "path": ".agents/skills/issue-creation/SKILL.md",
+      "triggers": [
+        "create issue",
+        "github issue",
+        "bug report",
+        "feature request",
+        "open issue",
+        "issue creation",
+        "report bug"
+      ],
+      "name": "issue-creation"
+    },
+    "recovery-protocol": {
+      "path": ".agents/skills/recovery-protocol/SKILL.md",
+      "triggers": [
+        "recovery",
+        "'no es eso'",
+        "frustration",
+        "error correction"
+      ],
+      "name": "recovery-protocol"
+    },
+    "command-wrapper": {
+      "path": ".agents/skills/command-wrapper/SKILL.md",
+      "triggers": [
+        "command wrapper",
+        "error handling",
+        "output parsing"
+      ],
+      "name": "command-wrapper"
+    },
+    "ralph-loop": {
+      "path": ".agents/skills/ralph-loop/SKILL.md",
+      "triggers": [
+        "ralph",
+        "ralph loop",
+        "auto-continue",
+        "iterative loop",
+        "/ralph-loop",
+        "continuous task",
+        "autonomous loop"
+      ],
+      "name": "ralph-loop"
+    },
+    "refactoring-planner": {
+      "path": ".agents/skills/refactoring-planner/SKILL.md",
+      "triggers": [
+        "refactor",
+        "refactoring",
+        "reestructurar",
+        "migrate"
+      ],
+      "name": "refactoring-planner"
+    },
+    "auth-hardening": {
+      "path": ".agents/skills/auth-hardening/SKILL.md",
+      "triggers": [
+        "auth",
+        "authentication",
+        "authorization",
+        "jwt",
+        "oauth",
+        "rbac",
+        "csrf",
+        "session",
+        "login",
+        "password hashing",
+        "token",
+        "cookie"
+      ],
+      "name": "auth-hardening"
+    },
+    "best-practices": {
+      "path": ".agents/skills/best-practices/SKILL.md",
+      "triggers": [
+        "best practices",
+        "security audit",
+        "modernize code",
+        "code quality",
+        "check vulnerabilities"
+      ],
+      "name": "best-practices"
+    },
+    "security-scanner": {
+      "path": ".agents/skills/security-scanner/SKILL.md",
+      "triggers": [
+        "security",
+        "seguridad",
+        "vulnerabilidad",
+        "auditar",
+        "safe check",
+        "harden"
+      ],
+      "name": "security-scanner"
+    },
+    "project-mapper": {
+      "path": ".agents/skills/project-mapper/SKILL.md",
+      "triggers": [
+        "mapear",
+        "project map",
+        "estructura",
+        "tech stack",
+        "arquitectura"
+      ],
+      "name": "project-mapper"
+    },
+    "gap-analysis": {
+      "path": ".agents/skills/gap-analysis/SKILL.md",
+      "triggers": [
+        "gap analysis",
+        "system audit",
+        "identificar gaps",
+        "project intake"
+      ],
+      "name": "gap-analysis"
+    },
+    "deep-debugging": {
+      "path": ".agents/skills/deep-debugging/SKILL.md",
+      "triggers": [
+        "deep debug",
+        "root cause",
+        "hypothesis",
+        "multi-file bug",
+        "ambiguous failure",
+        "debug",
+        "rca"
+      ],
+      "name": "deep-debugging"
+    },
+    "cross-project-wisdom": {
+      "path": ".agents/skills/cross-project-wisdom/SKILL.md",
+      "triggers": [
+        "patterns",
+        "wisdom",
+        "lesson learned",
+        "in another project i",
+        "last time this",
+        "cross-project",
+        "retrospectiva",
+        "experiencia previa",
+        "!wisdom",
+        "pattern guard"
+      ],
+      "name": "cross-project-wisdom"
+    },
+    "skill-registry": {
+      "path": ".agents/skills/skill-registry/SKILL.md",
+      "triggers": [
+        "skill registry",
+        "catalog"
+      ],
+      "name": "skill-registry"
+    },
+    "sdd-quick": {
+      "path": ".agents/skills/sdd-quick/SKILL.md",
+      "triggers": [
+        "sdd quick",
+        "fast path",
+        "quick sdd",
+        "low risk sdd",
+        "simple change sdd"
+      ],
+      "name": "sdd-quick"
+    },
+    "context-watchdog": {
+      "path": ".agents/skills/context-watchdog/SKILL.md",
+      "triggers": [
+        "context explosion",
+        "compress",
+        "compression schedule",
+        "session break"
+      ],
+      "name": "context-watchdog"
+    },
+    "skill-graph": {
+      "path": ".agents/skills/skill-graph/SKILL.md",
+      "triggers": [
+        "sparse loading",
+        "skill resolution",
+        "relevant skills",
+        "which skill",
+        "skill-graph"
+      ],
+      "name": "skill-graph"
+    },
+    "workflow-optimizer": {
+      "path": ".agents/skills/workflow-optimizer/SKILL.md",
+      "triggers": [
+        "optimize-workflow",
+        "faster-access",
+        "token-optimization",
+        "workflow-pattern",
+        "information-access",
+        "fluidez"
+      ],
+      "name": "workflow-optimizer"
+    },
+    "analysis-mode": {
+      "path": ".agents/skills/analysis-mode/SKILL.md",
+      "triggers": [
+        "!analisis",
+        "!analysis",
+        "analysis mode",
+        "multi-agent analysis",
+        "smart analysis"
+      ],
+      "name": "analysis-mode"
+    },
+    "infra-audit": {
+      "path": ".agents/skills/infra-audit/SKILL.md",
+      "triggers": [
+        "infrastructure audit",
+        "iac",
+        "terraform",
+        "kubernetes",
+        "ci/cd",
+        "docker",
+        "cloud",
+        "deployment",
+        "helm",
+        "ansible",
+        "terraform",
+        "k8s"
+      ],
+      "name": "infra-audit"
+    },
+    "external-improvement": {
+      "path": ".agents/skills/external-improvement/SKILL.md",
+      "triggers": [
+        "improve external project",
+        "mejora proyecto",
+        "proyecto externo",
+        "5-phase cycle",
+        "ciclo 5 fases",
+        "analizá este proyecto",
+        "corré el ciclo",
+        "revisame el proyecto",
+        "!5fases",
+        "!extimprove",
+        "aplicá las 5 fases"
+      ],
+      "name": "external-improvement"
+    },
+    "bitacora": {
+      "path": ".agents/skills/bitacora/SKILL.md",
+      "triggers": [
+        "bitacora",
+        "historial",
+        "histórico",
+        "qué pedí",
+        "request log"
+      ],
+      "name": "bitacora"
+    },
+    "docs-audit": {
+      "path": ".agents/skills/docs-audit/SKILL.md",
+      "triggers": [
+        "documentation audit",
+        "readme audit",
+        "api docs",
+        "onboarding docs",
+        "diátaxis",
+        "docs completeness",
+        "docs review",
+        "doc audit"
+      ],
+      "name": "docs-audit"
+    },
+    "opencode-skill-creator": {
+      "path": ".agents/skills/opencode-skill-creator/SKILL.md",
+      "triggers": [
+        "create skill",
+        "edit skill",
+        "opencode skill",
+        "skill eval",
+        "evaluate prompt",
+        "benchmark skill",
+        "iterate skill",
+        "skill testing",
+        "skill creation"
+      ],
+      "name": "opencode-skill-creator"
+    },
+    "chained-pr": {
+      "path": ".agents/skills/chained-pr/SKILL.md",
+      "triggers": [
+        "chained pr",
+        "stacked pr",
+        "sequential branches",
+        "pr chain",
+        "stacked branches",
+        "pr stack",
+        "oversized pr",
+        "400 lines",
+        "review slices"
+      ],
+      "name": "chained-pr"
+    },
+    "quick-executor": {
+      "path": ".agents/skills/quick-executor/SKILL.md",
+      "triggers": [
+        "quick edit",
+        "single file",
+        "atomic edit",
+        "fast fix",
+        "one-line fix",
+        "small change",
+        "quick fix"
+      ],
+      "name": "quick-executor"
+    },
+    "code-generation": {
+      "path": ".agents/skills/code-generation/SKILL.md",
+      "triggers": [
+        "new file",
+        "new function",
+        "code generation",
+        "script",
+        "boilerplate",
+        "scaffold",
+        "create code",
+        "write code"
+      ],
+      "name": "code-generation"
+    },
+    "delivery-harness": {
+      "path": ".agents/skills/delivery-harness/SKILL.md",
+      "triggers": [
+        "coordinate",
+        "orchestrate",
+        "multi-agent",
+        "delegate work"
+      ],
+      "name": "delivery-harness"
+    },
+    "adversarial-breaker": {
+      "path": ".agents/skills/adversarial-breaker/SKILL.md",
+      "triggers": [
+        "adversarial",
+        "breaker",
+        "!breaker",
+        "verify fix",
+        "romper",
+        "verificar fix",
+        "try to break",
+        "offensive verification"
+      ],
+      "name": "adversarial-breaker"
+    },
+    "performance": {
+      "path": ".agents/skills/performance/SKILL.md",
+      "triggers": [
+        "performance",
+        "speed up",
+        "load time",
+        "slow loading",
+        "page speed",
+        "performance audit",
+        "inp",
+        "animation performance",
+        "scroll performance",
+        "compositor"
+      ],
+      "name": "performance"
+    },
+    "data-quality": {
+      "path": ".agents/skills/data-quality/SKILL.md",
+      "triggers": [
+        "data audit",
+        "data pipeline audit",
+        "schema validation",
+        "data governance",
+        "etl audit",
+        "data quality check",
+        "data review"
+      ],
+      "name": "data-quality"
+    },
+    "plan-execution": {
+      "path": ".agents/skills/plan-execution/SKILL.md",
+      "triggers": [
+        "execute plan",
+        "implement plan",
+        "step-by-step execution",
+        "task execution",
+        "plan completion",
+        "run plan",
+        "do plan"
+      ],
+      "name": "plan-execution"
+    },
+    "triple-verify": {
+      "path": ".agents/skills/triple-verify/SKILL.md",
+      "triggers": [
+        "triple verify",
+        "triangulate",
+        "3 enfoques",
+        "!ship",
+        "!listo",
+        "!fast",
+        "!draft"
+      ],
+      "name": "triple-verify"
+    },
+    "execution-mode": {
+      "path": ".agents/skills/execution-mode/SKILL.md",
+      "triggers": [
+        "execution mode",
+        "quick/thorough/draft",
+        "resource adaptive",
+        "zone green/yellow/orange/red"
+      ],
+      "name": "execution-mode"
+    },
+    "vision-analyze": {
+      "path": ".agents/skills/vision-analyze/SKILL.md",
+      "triggers": [
+        "screenshot",
+        "capture",
+        "vision",
+        "analyze-ui",
+        "visual-review",
+        "captura",
+        "analizar-imagen"
+      ],
+      "name": "vision-analyze"
+    },
+    "baseline-ui": {
+      "path": ".agents/skills/baseline-ui/SKILL.md",
+      "triggers": [
+        "ui cleanup",
+        "polish interface",
+        "fix layout",
+        "ui slop",
+        "generic ui",
+        "design review",
+        "responsive",
+        "container query",
+        "flexbox",
+        "grid",
+        "ui audit"
+      ],
+      "name": "baseline-ui"
+    },
+    "work-unit-commits": {
+      "path": ".agents/skills/work-unit-commits/SKILL.md",
+      "triggers": [
+        "work unit",
+        "commit splitting",
+        "commit organization",
+        "reviewable commits",
+        "split commit",
+        "stacked pr",
+        "chained pr commits"
+      ],
+      "name": "work-unit-commits"
+    },
+    "research": {
+      "path": ".agents/skills/research/SKILL.md",
+      "triggers": [
+        "research task",
+        "technical investigation",
+        "investigar",
+        "research",
+        "learn new tech",
+        "compare solutions",
+        "evaluate options"
+      ],
+      "name": "research"
+    },
+    "code-review-agent": {
+      "path": ".agents/skills/code-review-agent/SKILL.md",
+      "triggers": [
+        "code review",
+        "cr",
+        "revisar código",
+        "criticar"
+      ],
+      "name": "code-review-agent"
+    },
+    "sdd": {
+      "path": ".agents/skills/sdd/SKILL.md",
+      "triggers": [
+        "sdd pipeline",
+        "sdd phase",
+        "spec-driven development"
+      ],
+      "name": "sdd"
+    },
+    "quality-gate": {
+      "path": ".agents/skills/quality-gate/SKILL.md",
+      "triggers": [
+        "quality gate",
+        "pre-commit",
+        "pssa gate"
+      ],
+      "name": "quality-gate"
+    },
+    "ui-engine": {
+      "path": ".agents/skills/ui-engine/SKILL.md",
+      "triggers": [
+        "ui",
+        "layout",
+        "responsive",
+        "animation",
+        "design tokens",
+        "css",
+        "grid",
+        "flexbox",
+        "container query",
+        "dark mode",
+        "component layout",
+        "page layout",
+        "component patterns",
+        "hooks",
+        "compound components",
+        "state management"
+      ],
+      "name": "ui-engine"
+    },
+    "self-improvement": {
+      "path": ".agents/skills/self-improvement/SKILL.md",
+      "triggers": [
+        "self-improvement",
+        "improvement cycle",
+        "auto-mejora",
+        "ciclo de mejora",
+        "comienza ciclo",
+        "self-reflection",
+        "hermes",
+        "reflexioná"
+      ],
+      "name": "self-improvement"
+    },
+    "accessibility": {
+      "path": ".agents/skills/accessibility/SKILL.md",
+      "triggers": [
+        "a11y",
+        "accessibility",
+        "wcag",
+        "screen reader",
+        "keyboard navigation",
+        "eaa",
+        "european accessibility act",
+        "contrast",
+        "focus",
+        "touch target"
+      ],
+      "name": "accessibility"
+    },
+    "dreaming": {
+      "path": ".agents/skills/dreaming/SKILL.md",
+      "triggers": [
+        "!dream",
+        "dreaming",
+        "patrones",
+        "memory review",
+        "session end",
+        "!close",
+        "pattern extraction"
+      ],
+      "name": "dreaming"
+    },
+    "container-security": {
+      "path": ".agents/skills/container-security/SKILL.md",
+      "triggers": [
+        "dockerfile",
+        "docker-compose",
+        "container",
+        "image",
+        "kubernetes",
+        "k8s",
+        "pod",
+        "deployment",
+        "helm",
+        "docker",
+        "orchestration"
+      ],
+      "name": "container-security"
+    },
+    "immune-system": {
+      "path": ".agents/skills/immune-system/SKILL.md",
+      "triggers": [
+        "immune system",
+        "anti-pattern",
+        "permanent immunity"
+      ],
+      "name": "immune-system"
+    },
+    "image-pipeline": {
+      "path": ".agents/skills/image-pipeline/SKILL.md",
+      "triggers": [
+        "compress image",
+        "optimize image",
+        "resize image",
+        "convert webp",
+        "convert avif",
+        "describe image",
+        "image too heavy",
+        "slow images",
+        "image bug"
+      ],
+      "name": "image-pipeline"
+    },
+    "ci-cd": {
+      "path": ".agents/skills/ci-cd/SKILL.md",
+      "triggers": [
+        "ci/cd pipeline",
+        "github actions",
+        "quality gate"
+      ],
+      "name": "ci-cd"
+    },
+    "skill-improver": {
+      "path": ".agents/skills/skill-improver/SKILL.md",
+      "triggers": [
+        "skill improvement",
+        "audit skills",
+        "refactor skills",
+        "skill refresher",
+        "drift detection",
+        "auto-heal"
+      ],
+      "name": "skill-improver"
+    },
+    "engram-protocol": {
+      "path": ".agents/skills/engram-protocol/SKILL.md",
+      "triggers": [
+        "remember",
+        "recall",
+        "engram",
+        "mem_save",
+        "mem_search",
+        "session close",
+        "dreaming",
+        "memory",
+        "token budget",
+        "compression",
+        "l1 l2 l3",
+        "capture pipeline",
+        "project score",
+        "bias calibration"
+      ],
+      "name": "engram-protocol"
+    },
+    "metricas": {
+      "path": ".agents/skills/metricas/SKILL.md",
+      "triggers": [
+        "metricas",
+        "before/after",
+        "% improvement",
+        "tokenization",
+        "delta"
+      ],
+      "name": "metricas"
+    },
+    "opencode-model-router": {
+      "path": ".agents/skills/opencode-model-router/SKILL.md",
+      "triggers": [
+        "model router",
+        "routing",
+        "delegate or direct",
+        "model decision",
+        "specialized agent",
+        "implementer"
+      ],
+      "name": "opencode-model-router"
+    },
+    "judgment-day": {
+      "path": ".agents/skills/judgment-day/SKILL.md",
+      "triggers": [
+        "judgment day",
+        "jd",
+        "dual review",
+        "juzgar",
+        "adversarial review"
+      ],
+      "name": "judgment-day"
+    },
+    "api-testing": {
+      "path": ".agents/skills/api-testing/SKILL.md",
+      "triggers": [
+        "api testing",
+        "api test",
+        "rest test",
+        "graphql test",
+        "endpoint test",
+        "contract test",
+        "schema validation",
+        "response validation",
+        "auth test",
+        "api mock",
+        "collection test",
+        "postman",
+        "bruno",
+        "insomnia",
+        "openapi validation"
+      ],
+      "name": "api-testing"
+    },
+    "server-commands": {
+      "path": ".agents/skills/server-commands/SKILL.md",
+      "triggers": [
+        "server",
+        "ng serve",
+        "npm run dev",
+        "dotnet run",
+        "python -m http.server",
+        "dev server",
+        "background process",
+        "long-lived",
+        "!dev"
+      ],
+      "name": "server-commands"
+    },
+    "e2e-testing": {
+      "path": ".agents/skills/e2e-testing/SKILL.md",
+      "triggers": [
+        "test",
+        "e2e",
+        "playwright",
+        "browser testing",
+        "interactive testing",
+        "form testing"
+      ],
+      "name": "e2e-testing"
+    },
+    "skill-testing": {
+      "path": ".agents/skills/skill-testing/SKILL.md",
+      "triggers": [
+        "test/verify skill",
+        "coverage"
+      ],
+      "name": "skill-testing"
+    },
+    "cross-project-forge": {
+      "path": ".agents/skills/cross-project-forge/SKILL.md",
+      "triggers": [
+        "forge",
+        "promote pattern",
+        "auto-skill",
+        "forjar",
+        "convertir patrón",
+        "skill desde patrón",
+        "cross-project-forge"
+      ],
+      "name": "cross-project-forge"
+    },
+    "testing-strategy": {
+      "path": ".agents/skills/testing-strategy/SKILL.md",
+      "triggers": [
+        "testing strategy",
+        "test plan",
+        "test coverage",
+        "test pyramid",
+        "test debt",
+        "test gap",
+        "test priority",
+        "test audit",
+        "quality strategy",
+        "what to test",
+        "how to test"
+      ],
+      "name": "testing-strategy"
+    },
+    "perf-profiling": {
+      "path": ".agents/skills/perf-profiling/SKILL.md",
+      "triggers": [
+        "performance profiling",
+        "slow queries",
+        "n+1",
+        "memory leak",
+        "cpu hotspot",
+        "profiling",
+        "query optimization"
+      ],
+      "name": "perf-profiling"
+    },
+    "pdf-utils": {
+      "path": ".agents/skills/pdf-utils/SKILL.md",
+      "triggers": [
+        "pdf",
+        "extract pdf",
+        "parse pdf",
+        "merge pdf",
+        "generate pdf",
+        "pdf table",
+        "pdf invoice",
+        "read pdf",
+        "pdf to text",
+        "pdf to markdown"
+      ],
+      "name": "pdf-utils"
+    },
+    "auto-metrics": {
+      "path": ".agents/skills/auto-metrics/SKILL.md",
+      "triggers": [
+        "!score",
+        "!metrics",
+        "explicit score/metric request",
+        "session end via !close"
+      ],
+      "name": "auto-metrics"
+    },
+    "branch-pr": {
+      "path": ".agents/skills/branch-pr/SKILL.md",
+      "triggers": [
+        "pull request",
+        "create pr",
+        "open pr",
+        "branch naming",
+        "pr creation",
+        "review pr",
+        "github pull request"
+      ],
+      "name": "branch-pr"
+    },
+    "cancel-ralph": {
+      "path": ".agents/skills/cancel-ralph/SKILL.md",
+      "triggers": [
+        "cancel ralph",
+        "stop loop",
+        "cancel loop",
+        "ralph stop",
+        "end loop"
+      ],
+      "name": "cancel-ralph"
+    },
+    "development-mode": {
+      "path": ".agents/skills/development-mode/SKILL.md",
+      "triggers": [
+        "modo desarrollo",
+        "dev mode",
+        "development mode",
+        "performance mode",
+        "resource priority"
+      ],
+      "name": "development-mode"
+    },
+    "web-quality-audit": {
+      "path": ".agents/skills/web-quality-audit/SKILL.md",
+      "triggers": [
+        "audit",
+        "review web quality",
+        "lighthouse",
+        "page quality",
+        "optimize website",
+        "design audit",
+        "ui audit",
+        "web audit",
+        "site review"
+      ],
+      "name": "web-quality-audit"
+    },
+    "llm-security": {
+      "path": ".agents/skills/llm-security/SKILL.md",
+      "triggers": [
+        "llm",
+        "ai",
+        "prompt injection",
+        "rag",
+        "openai",
+        "anthropic",
+        "ollama",
+        "langchain",
+        "agent",
+        "tool use",
+        "data exfiltration",
+        "model"
+      ],
+      "name": "llm-security"
+    },
+    "session-resume": {
+      "path": ".agents/skills/session-resume/SKILL.md",
+      "triggers": [
+        "session resume",
+        "dónde lo dejamos",
+        "continuá",
+        "session start",
+        "code memory",
+        "memory",
+        "recordar",
+        "acordate",
+        "multi-session",
+        "donde quedamos",
+        "handoff"
+      ],
+      "name": "session-resume"
+    },
+    "external-auditor": {
+      "path": ".agents/skills/external-auditor/SKILL.md",
+      "triggers": [
+        "!audit",
+        "external audit",
+        "blind review",
+        "'second opinion'",
+        "'verificá mi auto-score'"
+      ],
+      "name": "external-auditor"
+    },
+    "lean-context": {
+      "path": ".agents/skills/lean-context/SKILL.md",
+      "triggers": [
+        "ultra-lean default",
+        "compact responses",
+        "caveman",
+        "/caveman"
+      ],
+      "name": "lean-context"
+    },
+    "help": {
+      "path": ".agents/skills/help/SKILL.md",
+      "triggers": [
+        "help",
+        "ralph help",
+        "commands",
+        "available commands",
+        "what can you do",
+        "/help"
+      ],
+      "name": "help"
+    },
+    "subagent-isolation": {
+      "path": ".agents/skills/subagent-isolation/SKILL.md",
+      "triggers": [
+        "subagent isolation",
+        "context boundaries"
+      ],
+      "name": "subagent-isolation"
+    },
+    "visual-testing": {
+      "path": ".agents/skills/visual-testing/SKILL.md",
+      "triggers": [
+        "screenshot",
+        "visual diff",
+        "visual bug",
+        "regression test",
+        "vrt",
+        "ui broken",
+        "text overflow",
+        "layout shift",
+        "responsive test",
+        "visual regression"
+      ],
+      "name": "visual-testing"
+    },
+    "karpathy-loop": {
+      "path": ".agents/skills/karpathy-loop/SKILL.md",
+      "triggers": [
+        "karpathy loop",
+        "optimize prompt",
+        "measure tokens"
+      ],
+      "name": "karpathy-loop"
+    },
+    "commit-crafter": {
+      "path": ".agents/skills/commit-crafter/SKILL.md",
+      "triggers": [
+        "commit",
+        "mensaje",
+        "commit message",
+        "conventional commit",
+        "git commit",
+        "craft commit"
+      ],
+      "name": "commit-crafter"
+    },
+    "_shared": {
+      "path": ".agents/skills/_shared/SKILL.md",
+      "triggers": [
+        "- sdd shared references"
+      ],
+      "name": "_shared"
+    }
+  },
+  "generated": "2026-08-05T10:56:35.3018559-06:00",
+  "trigger_index": {
+    "model": [
+      "llm-security"
+    ],
+    "!listo": [
+      "triple-verify"
+    ],
+    "e2e": [
+      "e2e-testing"
+    ],
+    "generative search": [
+      "seo"
+    ],
+    "resource adaptive": [
+      "execution-mode"
+    ],
+    "cross-project": [
+      "cross-project-wisdom"
+    ],
+    "scaffold": [
+      "code-generation"
+    ],
+    "oauth": [
+      "auth-hardening"
+    ],
+    "ui audit": [
+      "baseline-ui",
+      "web-quality-audit"
+    ],
+    "check vulnerabilities": [
+      "best-practices"
+    ],
+    "implementer": [
+      "opencode-model-router"
+    ],
+    "iterative loop": [
+      "ralph-loop"
+    ],
+    "security": [
+      "security-scanner"
+    ],
+    "recordar": [
+      "session-resume"
+    ],
+    "fluidez": [
+      "workflow-optimizer"
+    ],
+    "bruno": [
+      "api-testing"
+    ],
+    "karpathy loop": [
+      "karpathy-loop"
+    ],
+    "drift detection": [
+      "skill-improver"
+    ],
+    "ralph": [
+      "ralph-loop"
+    ],
+    "commit": [
+      "commit-crafter"
+    ],
+    "test": [
+      "e2e-testing"
+    ],
+    "compositor": [
+      "performance"
+    ],
+    "profiling": [
+      "perf-profiling"
+    ],
+    "dev mode": [
+      "development-mode"
+    ],
+    "ci/cd pipeline": [
+      "ci-cd"
+    ],
+    "remember": [
+      "engram-protocol"
+    ],
+    "system audit": [
+      "gap-analysis"
+    ],
+    "evaluate options": [
+      "research"
+    ],
+    "design review": [
+      "baseline-ui"
+    ],
+    "design audit": [
+      "web-quality-audit"
+    ],
+    "continuous task": [
+      "ralph-loop"
+    ],
+    "mensaje": [
+      "commit-crafter"
+    ],
+    "/caveman": [
+      "lean-context"
+    ],
+    "delegate or direct": [
+      "opencode-model-router"
+    ],
+    "data governance": [
+      "data-quality"
+    ],
+    "romper": [
+      "adversarial-breaker"
+    ],
+    "form testing": [
+      "e2e-testing"
+    ],
+    "fast path": [
+      "sdd-quick"
+    ],
+    "triple verify": [
+      "triple-verify"
+    ],
+    "faster-access": [
+      "workflow-optimizer"
+    ],
+    "compound components": [
+      "ui-engine"
+    ],
+    "!metrics": [
+      "auto-metrics"
+    ],
+    "rag": [
+      "llm-security"
+    ],
+    "langchain": [
+      "llm-security"
+    ],
+    "ui": [
+      "ui-engine"
+    ],
+    "ambiguous failure": [
+      "deep-debugging"
+    ],
+    "performance score": [
+      "performance-tracker"
+    ],
+    "!dev": [
+      "server-commands"
+    ],
+    "ui broken": [
+      "visual-testing"
+    ],
+    "ultra-lean default": [
+      "lean-context"
+    ],
+    "describe image": [
+      "image-pipeline"
+    ],
+    "convertir patrón": [
+      "cross-project-forge"
+    ],
+    "optimize website": [
+      "web-quality-audit"
+    ],
+    "research": [
+      "research"
+    ],
+    "skill registry": [
+      "skill-registry"
+    ],
+    "deep debug": [
+      "deep-debugging"
+    ],
+    "skill testing": [
+      "opencode-skill-creator"
+    ],
+    "extract pdf": [
+      "pdf-utils"
+    ],
+    "inp": [
+      "performance",
+      "seo"
+    ],
+    "polish interface": [
+      "baseline-ui"
+    ],
+    "!ship": [
+      "triple-verify"
+    ],
+    "dotnet run": [
+      "server-commands"
+    ],
+    "eaa": [
+      "accessibility"
+    ],
+    "external audit": [
+      "external-auditor"
+    ],
+    "site review": [
+      "web-quality-audit"
+    ],
+    "bitacora": [
+      "bitacora"
+    ],
+    "/ralph-loop": [
+      "ralph-loop"
+    ],
+    "analysis mode": [
+      "analysis-mode"
+    ],
+    "project score": [
+      "engram-protocol"
+    ],
+    "forjar": [
+      "cross-project-forge"
+    ],
+    "docker-compose": [
+      "container-security"
+    ],
+    "modo desarrollo": [
+      "development-mode"
+    ],
+    "ciclo de mejora": [
+      "self-improvement"
+    ],
+    "pull request": [
+      "branch-pr"
+    ],
+    "error correction": [
+      "recovery-protocol"
+    ],
+    "proyecto externo": [
+      "external-improvement"
+    ],
+    "response validation": [
+      "api-testing"
+    ],
+    "schema": [
+      "seo"
+    ],
+    "last time this": [
+      "cross-project-wisdom"
+    ],
+    "boilerplate": [
+      "code-generation"
+    ],
+    "dockerfile": [
+      "container-security"
+    ],
+    "git commit": [
+      "commit-crafter"
+    ],
+    "reviewable commits": [
+      "work-unit-commits"
+    ],
+    "specialized agent": [
+      "opencode-model-router"
+    ],
+    "context boundaries": [
+      "subagent-isolation"
+    ],
+    "sequential branches": [
+      "chained-pr"
+    ],
+    "token": [
+      "auth-hardening"
+    ],
+    "helm": [
+      "container-security",
+      "infra-audit"
+    ],
+    "project intake": [
+      "gap-analysis"
+    ],
+    "page quality": [
+      "web-quality-audit"
+    ],
+    "data pipeline audit": [
+      "data-quality"
+    ],
+    "information-access": [
+      "workflow-optimizer"
+    ],
+    "review slices": [
+      "chained-pr"
+    ],
+    "root cause": [
+      "deep-debugging"
+    ],
+    "compare solutions": [
+      "research"
+    ],
+    "github actions": [
+      "ci-cd"
+    ],
+    "structured data": [
+      "seo"
+    ],
+    "ansible": [
+      "infra-audit"
+    ],
+    "fast fix": [
+      "quick-executor"
+    ],
+    "before/after": [
+      "metricas"
+    ],
+    "!breaker": [
+      "adversarial-breaker"
+    ],
+    "component layout": [
+      "ui-engine"
+    ],
+    "european accessibility act": [
+      "accessibility"
+    ],
+    "400 lines": [
+      "chained-pr"
+    ],
+    "session": [
+      "auth-hardening"
+    ],
+    "performance profiling": [
+      "perf-profiling"
+    ],
+    "output parsing": [
+      "command-wrapper"
+    ],
+    "one-line fix": [
+      "quick-executor"
+    ],
+    "frustration": [
+      "recovery-protocol"
+    ],
+    "optimize-workflow": [
+      "workflow-optimizer"
+    ],
+    "cookie": [
+      "auth-hardening"
+    ],
+    "token-optimization": [
+      "workflow-optimizer"
+    ],
+    "% improvement": [
+      "metricas"
+    ],
+    "patrones": [
+      "dreaming"
+    ],
+    "visual regression": [
+      "visual-testing"
+    ],
+    "code memory": [
+      "session-resume"
+    ],
+    "self-improvement": [
+      "self-improvement"
+    ],
+    "jd": [
+      "judgment-day"
+    ],
+    "craft commit": [
+      "commit-crafter"
+    ],
+    "pr feedback": [
+      "comment-writer"
+    ],
+    "commands": [
+      "help"
+    ],
+    "mapear": [
+      "project-mapper"
+    ],
+    "performance": [
+      "performance"
+    ],
+    "compress": [
+      "context-watchdog"
+    ],
+    "pr chain": [
+      "chained-pr"
+    ],
+    "eeat": [
+      "seo"
+    ],
+    "github issue": [
+      "issue-creation"
+    ],
+    "code review": [
+      "code-review-agent"
+    ],
+    "touch target": [
+      "accessibility"
+    ],
+    "multi-agent analysis": [
+      "analysis-mode"
+    ],
+    "robots.txt": [
+      "seo"
+    ],
+    "ga4": [
+      "seo"
+    ],
+    "pr stack": [
+      "chained-pr"
+    ],
+    "plan completion": [
+      "plan-execution"
+    ],
+    "technical investigation": [
+      "research"
+    ],
+    "compression schedule": [
+      "context-watchdog"
+    ],
+    "docker": [
+      "container-security",
+      "infra-audit"
+    ],
+    "open issue": [
+      "issue-creation"
+    ],
+    "skill refresher": [
+      "skill-improver"
+    ],
+    "session start": [
+      "session-resume"
+    ],
+    "content cluster": [
+      "seo"
+    ],
+    "animation performance": [
+      "performance"
+    ],
+    "commit message": [
+      "commit-crafter"
+    ],
+    "ralph help": [
+      "help"
+    ],
+    "issue creation": [
+      "issue-creation"
+    ],
+    "responsive test": [
+      "visual-testing"
+    ],
+    "optimize prompt": [
+      "karpathy-loop"
+    ],
+    "tech stack": [
+      "project-mapper"
+    ],
+    "'second opinion'": [
+      "external-auditor"
+    ],
+    "data audit": [
+      "data-quality"
+    ],
+    "explicit score/metric request": [
+      "auto-metrics"
+    ],
+    "pdf to markdown": [
+      "pdf-utils"
+    ],
+    "interactive testing": [
+      "e2e-testing"
+    ],
+    "review comment": [
+      "comment-writer"
+    ],
+    "rbac": [
+      "auth-hardening"
+    ],
+    "search engine": [
+      "seo"
+    ],
+    "slow queries": [
+      "perf-profiling"
+    ],
+    "responsive": [
+      "baseline-ui",
+      "ui-engine"
+    ],
+    "write code": [
+      "code-generation"
+    ],
+    "report bug": [
+      "issue-creation"
+    ],
+    "infrastructure audit": [
+      "infra-audit"
+    ],
+    "5-phase cycle": [
+      "external-improvement"
+    ],
+    "auto-continue": [
+      "ralph-loop"
+    ],
+    "zone green/yellow/orange/red": [
+      "execution-mode"
+    ],
+    "'no es eso'": [
+      "recovery-protocol"
+    ],
+    "search optimization": [
+      "seo"
+    ],
+    "benchmark": [
+      "performance-tracker"
+    ],
+    "do plan": [
+      "plan-execution"
+    ],
+    "ranking": [
+      "seo"
+    ],
+    "sge": [
+      "seo"
+    ],
+    "session close": [
+      "engram-protocol"
+    ],
+    "historial": [
+      "bitacora"
+    ],
+    "feature request": [
+      "issue-creation"
+    ],
+    "which skill": [
+      "skill-graph"
+    ],
+    "tool use": [
+      "llm-security"
+    ],
+    "hooks": [
+      "ui-engine"
+    ],
+    "image too heavy": [
+      "image-pipeline"
+    ],
+    "delegate work": [
+      "delivery-harness"
+    ],
+    "testing strategy": [
+      "testing-strategy"
+    ],
+    "recall": [
+      "engram-protocol"
+    ],
+    "tokenization": [
+      "metricas"
+    ],
+    "review web quality": [
+      "web-quality-audit"
+    ],
+    "csrf": [
+      "auth-hardening"
+    ],
+    "auth test": [
+      "api-testing"
+    ],
+    "compress image": [
+      "image-pipeline"
+    ],
+    "available commands": [
+      "help"
+    ],
+    "kubernetes": [
+      "container-security",
+      "infra-audit"
+    ],
+    "task execution": [
+      "plan-execution"
+    ],
+    "audit skills": [
+      "skill-improver"
+    ],
+    "prompt injection": [
+      "llm-security"
+    ],
+    "resize image": [
+      "image-pipeline"
+    ],
+    "orchestrate": [
+      "delivery-harness"
+    ],
+    "auto-mejora": [
+      "self-improvement"
+    ],
+    "stacked pr": [
+      "chained-pr",
+      "work-unit-commits"
+    ],
+    "test audit": [
+      "testing-strategy"
+    ],
+    "vrt": [
+      "visual-testing"
+    ],
+    "wisdom": [
+      "cross-project-wisdom"
+    ],
+    "data review": [
+      "data-quality"
+    ],
+    "wcag": [
+      "accessibility"
+    ],
+    "commit organization": [
+      "work-unit-commits"
+    ],
+    "development mode": [
+      "development-mode"
+    ],
+    "revisame el proyecto": [
+      "external-improvement"
+    ],
+    "model router": [
+      "opencode-model-router"
+    ],
+    "continuá": [
+      "session-resume"
+    ],
+    "small change": [
+      "quick-executor"
+    ],
+    "convert avif": [
+      "image-pipeline"
+    ],
+    "quality gate": [
+      "ci-cd",
+      "quality-gate"
+    ],
+    "rendimiento": [
+      "performance-tracker"
+    ],
+    "aeo": [
+      "seo"
+    ],
+    "security audit": [
+      "best-practices"
+    ],
+    "!score": [
+      "auto-metrics"
+    ],
+    "onboarding docs": [
+      "docs-audit"
+    ],
+    "read pdf": [
+      "pdf-utils"
+    ],
+    "l1 l2 l3": [
+      "engram-protocol"
+    ],
+    "api docs": [
+      "docs-audit"
+    ],
+    "k8s": [
+      "container-security",
+      "infra-audit"
+    ],
+    "login": [
+      "auth-hardening"
+    ],
+    "multi-session": [
+      "session-resume"
+    ],
+    "llm": [
+      "llm-security"
+    ],
+    "edit skill": [
+      "opencode-skill-creator"
+    ],
+    "seguridad": [
+      "security-scanner"
+    ],
+    "test plan": [
+      "testing-strategy"
+    ],
+    "reestructurar": [
+      "refactoring-planner"
+    ],
+    "pdf": [
+      "pdf-utils"
+    ],
+    "'verificá mi auto-score'": [
+      "external-auditor"
+    ],
+    "cancel ralph": [
+      "cancel-ralph"
+    ],
+    "model decision": [
+      "opencode-model-router"
+    ],
+    "skill-graph": [
+      "skill-graph"
+    ],
+    "text overflow": [
+      "visual-testing"
+    ],
+    "audit": [
+      "web-quality-audit"
+    ],
+    "pattern guard": [
+      "cross-project-wisdom"
+    ],
+    "commit splitting": [
+      "work-unit-commits"
+    ],
+    "test debt": [
+      "testing-strategy"
+    ],
+    "authorization": [
+      "auth-hardening"
+    ],
+    "mobile perf": [
+      "performance-tracker"
+    ],
+    "delta": [
+      "metricas"
+    ],
+    "speed up": [
+      "performance"
+    ],
+    "token budget": [
+      "engram-protocol"
+    ],
+    "vision": [
+      "vision-analyze"
+    ],
+    "ui slop": [
+      "baseline-ui"
+    ],
+    "web audit": [
+      "web-quality-audit"
+    ],
+    "sdd pipeline": [
+      "sdd"
+    ],
+    "review pr": [
+      "branch-pr"
+    ],
+    "mejora proyecto": [
+      "external-improvement"
+    ],
+    "bug report": [
+      "issue-creation"
+    ],
+    "container": [
+      "container-security"
+    ],
+    "pr creation": [
+      "branch-pr"
+    ],
+    "server": [
+      "server-commands"
+    ],
+    "compression": [
+      "engram-protocol"
+    ],
+    "spec-driven development": [
+      "sdd"
+    ],
+    "work unit": [
+      "work-unit-commits"
+    ],
+    "capture pipeline": [
+      "engram-protocol"
+    ],
+    "slow images": [
+      "image-pipeline"
+    ],
+    "!wisdom": [
+      "cross-project-wisdom"
+    ],
+    "pdf invoice": [
+      "pdf-utils"
+    ],
+    "dev server": [
+      "server-commands"
+    ],
+    "dual review": [
+      "judgment-day"
+    ],
+    "sdd quick": [
+      "sdd-quick"
+    ],
+    "corré el ciclo": [
+      "external-improvement"
+    ],
+    "catalog": [
+      "skill-registry"
+    ],
+    "analizá este proyecto": [
+      "external-improvement"
+    ],
+    "how to test": [
+      "testing-strategy"
+    ],
+    "seo": [
+      "seo"
+    ],
+    "code quality": [
+      "best-practices"
+    ],
+    "immune system": [
+      "immune-system"
+    ],
+    "ralph stop": [
+      "cancel-ralph"
+    ],
+    "agent": [
+      "llm-security"
+    ],
+    "load time": [
+      "performance"
+    ],
+    "test/verify skill": [
+      "skill-testing"
+    ],
+    "hermes": [
+      "self-improvement"
+    ],
+    "!close": [
+      "dreaming"
+    ],
+    "n+1": [
+      "perf-profiling"
+    ],
+    "arquitectura": [
+      "project-mapper"
+    ],
+    "branch naming": [
+      "branch-pr"
+    ],
+    "deployment": [
+      "container-security",
+      "infra-audit"
+    ],
+    "api mock": [
+      "api-testing"
+    ],
+    "npm run dev": [
+      "server-commands"
+    ],
+    "captura": [
+      "vision-analyze"
+    ],
+    "skill eval": [
+      "opencode-skill-creator"
+    ],
+    "retrospectiva": [
+      "cross-project-wisdom"
+    ],
+    "!draft": [
+      "triple-verify"
+    ],
+    "step-by-step execution": [
+      "plan-execution"
+    ],
+    "ralph loop": [
+      "ralph-loop"
+    ],
+    "pssa gate": [
+      "quality-gate"
+    ],
+    "caveman": [
+      "lean-context"
+    ],
+    "quality strategy": [
+      "testing-strategy"
+    ],
+    "- sdd shared references": [
+      "_shared"
+    ],
+    "refactoring": [
+      "refactoring-planner"
+    ],
+    "lighthouse": [
+      "performance-tracker",
+      "web-quality-audit"
+    ],
+    "convert webp": [
+      "image-pipeline"
+    ],
+    "quick fix": [
+      "quick-executor"
+    ],
+    "documentation audit": [
+      "docs-audit"
+    ],
+    "quick/thorough/draft": [
+      "execution-mode"
+    ],
+    "ai mode": [
+      "seo"
+    ],
+    "session end via !close": [
+      "auto-metrics"
+    ],
+    "simple change sdd": [
+      "sdd-quick"
+    ],
+    "sitemap": [
+      "seo"
+    ],
+    "pre-commit": [
+      "quality-gate"
+    ],
+    "investigar": [
+      "research"
+    ],
+    "request log": [
+      "bitacora"
+    ],
+    "session break": [
+      "context-watchdog"
+    ],
+    "multi-file bug": [
+      "deep-debugging"
+    ],
+    "component patterns": [
+      "ui-engine"
+    ],
+    "docs review": [
+      "docs-audit"
+    ],
+    "rca": [
+      "deep-debugging"
+    ],
+    "low risk sdd": [
+      "sdd-quick"
+    ],
+    "long-lived": [
+      "server-commands"
+    ],
+    "resource priority": [
+      "development-mode"
+    ],
+    "github comment": [
+      "comment-writer"
+    ],
+    "lesson learned": [
+      "cross-project-wisdom"
+    ],
+    "css": [
+      "ui-engine"
+    ],
+    "single file": [
+      "quick-executor"
+    ],
+    "performance audit": [
+      "performance"
+    ],
+    "verificar fix": [
+      "adversarial-breaker"
+    ],
+    "authentication": [
+      "auth-hardening"
+    ],
+    "pod": [
+      "container-security"
+    ],
+    "cross-project-forge": [
+      "cross-project-forge"
+    ],
+    "memory": [
+      "engram-protocol",
+      "session-resume"
+    ],
+    "implement plan": [
+      "plan-execution"
+    ],
+    "end loop": [
+      "cancel-ralph"
+    ],
+    "oversized pr": [
+      "chained-pr"
+    ],
+    "stop loop": [
+      "cancel-ralph"
+    ],
+    "conventional commit": [
+      "commit-crafter"
+    ],
+    "workflow-pattern": [
+      "workflow-optimizer"
+    ],
+    "ai": [
+      "llm-security"
+    ],
+    "migrate": [
+      "refactoring-planner"
+    ],
+    "app score": [
+      "performance-tracker"
+    ],
+    "scroll performance": [
+      "performance"
+    ],
+    "3 enfoques": [
+      "triple-verify"
+    ],
+    "qué pedí": [
+      "bitacora"
+    ],
+    "doc audit": [
+      "docs-audit"
+    ],
+    "page layout": [
+      "ui-engine"
+    ],
+    "comments": [
+      "comment-writer"
+    ],
+    "memory review": [
+      "dreaming"
+    ],
+    "focus": [
+      "accessibility"
+    ],
+    "regression test": [
+      "visual-testing"
+    ],
+    "geo": [
+      "seo"
+    ],
+    "verify fix": [
+      "adversarial-breaker"
+    ],
+    "relevant skills": [
+      "skill-graph"
+    ],
+    "forge": [
+      "cross-project-forge"
+    ],
+    "cancel loop": [
+      "cancel-ralph"
+    ],
+    "evaluate prompt": [
+      "opencode-skill-creator"
+    ],
+    "desktop perf": [
+      "performance-tracker"
+    ],
+    "smart analysis": [
+      "analysis-mode"
+    ],
+    "self-reflection": [
+      "self-improvement"
+    ],
+    "coordinate": [
+      "delivery-harness"
+    ],
+    "visual bug": [
+      "visual-testing"
+    ],
+    "auto-heal": [
+      "skill-improver"
+    ],
+    "try to break": [
+      "adversarial-breaker"
+    ],
+    "adversarial": [
+      "adversarial-breaker"
+    ],
+    "breaker": [
+      "adversarial-breaker"
+    ],
+    "help": [
+      "help"
+    ],
+    "error handling": [
+      "command-wrapper"
+    ],
+    "background process": [
+      "server-commands"
+    ],
+    "gap analysis": [
+      "gap-analysis"
+    ],
+    "recovery": [
+      "recovery-protocol"
+    ],
+    "skill desde patrón": [
+      "cross-project-forge"
+    ],
+    "meta tags": [
+      "seo"
+    ],
+    "contrast": [
+      "accessibility"
+    ],
+    "triangulate": [
+      "triple-verify"
+    ],
+    "jwt": [
+      "auth-hardening"
+    ],
+    "autonomous loop": [
+      "ralph-loop"
+    ],
+    "bias calibration": [
+      "engram-protocol"
+    ],
+    "pdf to text": [
+      "pdf-utils"
+    ],
+    "chained pr": [
+      "chained-pr"
+    ],
+    "test priority": [
+      "testing-strategy"
+    ],
+    "ciclo 5 fases": [
+      "external-improvement"
+    ],
+    "identificar gaps": [
+      "gap-analysis"
+    ],
+    "design tokens": [
+      "ui-engine"
+    ],
+    "generate pdf": [
+      "pdf-utils"
+    ],
+    "!dream": [
+      "dreaming"
+    ],
+    "donde quedamos": [
+      "session-resume"
+    ],
+    "dreaming": [
+      "dreaming",
+      "engram-protocol"
+    ],
+    "postman": [
+      "api-testing"
+    ],
+    "what can you do": [
+      "help"
+    ],
+    "mem_save": [
+      "engram-protocol"
+    ],
+    "layout shift": [
+      "visual-testing"
+    ],
+    "screen reader": [
+      "accessibility"
+    ],
+    "cr": [
+      "code-review-agent"
+    ],
+    "refactor skills": [
+      "skill-improver"
+    ],
+    "playwright": [
+      "e2e-testing"
+    ],
+    "improvement cycle": [
+      "self-improvement"
+    ],
+    "graphql test": [
+      "api-testing"
+    ],
+    "api test": [
+      "api-testing"
+    ],
+    "handoff": [
+      "session-resume"
+    ],
+    "stacked branches": [
+      "chained-pr"
+    ],
+    "orchestration": [
+      "container-security"
+    ],
+    "container query": [
+      "baseline-ui",
+      "ui-engine"
+    ],
+    "safe check": [
+      "security-scanner"
+    ],
+    "multi-agent": [
+      "delivery-harness"
+    ],
+    "juzgar": [
+      "judgment-day"
+    ],
+    "vulnerabilidad": [
+      "security-scanner"
+    ],
+    "auth": [
+      "auth-hardening"
+    ],
+    "histórico": [
+      "bitacora"
+    ],
+    "endpoint test": [
+      "api-testing"
+    ],
+    "offensive verification": [
+      "adversarial-breaker"
+    ],
+    "rest test": [
+      "api-testing"
+    ],
+    "visual diff": [
+      "visual-testing"
+    ],
+    "debug": [
+      "deep-debugging"
+    ],
+    "skill creation": [
+      "opencode-skill-creator"
+    ],
+    "in another project i": [
+      "cross-project-wisdom"
+    ],
+    "topical authority": [
+      "seo"
+    ],
+    "fix layout": [
+      "baseline-ui"
+    ],
+    "aplicá las 5 fases": [
+      "external-improvement"
+    ],
+    "routing": [
+      "opencode-model-router"
+    ],
+    "meta description": [
+      "seo"
+    ],
+    "openai": [
+      "llm-security"
+    ],
+    "layout": [
+      "ui-engine"
+    ],
+    "state management": [
+      "ui-engine"
+    ],
+    "memory leak": [
+      "perf-profiling"
+    ],
+    "query optimization": [
+      "perf-profiling"
+    ],
+    "iac": [
+      "infra-audit"
+    ],
+    "sparse loading": [
+      "skill-graph"
+    ],
+    "write feedback": [
+      "comment-writer"
+    ],
+    "dark mode": [
+      "ui-engine"
+    ],
+    "quick sdd": [
+      "sdd-quick"
+    ],
+    "execution mode": [
+      "execution-mode"
+    ],
+    "terraform": [
+      "infra-audit",
+      "infra-audit"
+    ],
+    "!fast": [
+      "triple-verify"
+    ],
+    "contract test": [
+      "api-testing"
+    ],
+    "chained pr commits": [
+      "work-unit-commits"
+    ],
+    "create code": [
+      "code-generation"
+    ],
+    "python -m http.server": [
+      "server-commands"
+    ],
+    "data exfiltration": [
+      "llm-security"
+    ],
+    "atomic edit": [
+      "quick-executor"
+    ],
+    "openapi validation": [
+      "api-testing"
+    ],
+    "flexbox": [
+      "baseline-ui",
+      "ui-engine"
+    ],
+    "accessibility": [
+      "accessibility"
+    ],
+    "optimize image": [
+      "image-pipeline"
+    ],
+    "adversarial review": [
+      "judgment-day"
+    ],
+    "!analisis": [
+      "analysis-mode"
+    ],
+    "permanent immunity": [
+      "immune-system"
+    ],
+    "iterate skill": [
+      "opencode-skill-creator"
+    ],
+    "measure tokens": [
+      "karpathy-loop"
+    ],
+    "a11y": [
+      "accessibility"
+    ],
+    "command wrapper": [
+      "command-wrapper"
+    ],
+    "pattern extraction": [
+      "dreaming"
+    ],
+    "project map": [
+      "project-mapper"
+    ],
+    "judgment day": [
+      "judgment-day"
+    ],
+    "merge pdf": [
+      "pdf-utils"
+    ],
+    "anti-pattern": [
+      "immune-system"
+    ],
+    "reflexioná": [
+      "self-improvement"
+    ],
+    "patterns": [
+      "cross-project-wisdom"
+    ],
+    "image": [
+      "container-security"
+    ],
+    "ng serve": [
+      "server-commands"
+    ],
+    "learn new tech": [
+      "research"
+    ],
+    "performance mode": [
+      "development-mode"
+    ],
+    "session resume": [
+      "session-resume"
+    ],
+    "skill resolution": [
+      "skill-graph"
+    ],
+    "anthropic": [
+      "llm-security"
+    ],
+    "revisar código": [
+      "code-review-agent"
+    ],
+    "open pr": [
+      "branch-pr"
+    ],
+    "sdd phase": [
+      "sdd"
+    ],
+    "coverage": [
+      "skill-testing"
+    ],
+    "generic ui": [
+      "baseline-ui"
+    ],
+    "refactor": [
+      "refactoring-planner"
+    ],
+    "keyboard navigation": [
+      "accessibility"
+    ],
+    "page speed": [
+      "performance"
+    ],
+    "research task": [
+      "research"
+    ],
+    "grid": [
+      "baseline-ui",
+      "ui-engine"
+    ],
+    "compact responses": [
+      "lean-context"
+    ],
+    "skill improvement": [
+      "skill-improver"
+    ],
+    "create skill": [
+      "opencode-skill-creator"
+    ],
+    "animation": [
+      "ui-engine"
+    ],
+    "etl audit": [
+      "data-quality"
+    ],
+    "metricas": [
+      "metricas"
+    ],
+    "estructura": [
+      "project-mapper"
+    ],
+    "github pull request": [
+      "branch-pr"
+    ],
+    "modernize code": [
+      "best-practices"
+    ],
+    "best practices": [
+      "best-practices"
+    ],
+    "!analysis": [
+      "analysis-mode"
+    ],
+    "test coverage": [
+      "testing-strategy"
+    ],
+    "comienza ciclo": [
+      "self-improvement"
+    ],
+    "ollama": [
+      "llm-security"
+    ],
+    "password hashing": [
+      "auth-hardening"
+    ],
+    "blind review": [
+      "external-auditor"
+    ],
+    "!extimprove": [
+      "external-improvement"
+    ],
+    "acordate": [
+      "session-resume"
+    ],
+    "mem_search": [
+      "engram-protocol"
+    ],
+    "code generation": [
+      "code-generation"
+    ],
+    "improve external project": [
+      "external-improvement"
+    ],
+    "e-e-a-t": [
+      "seo"
+    ],
+    "slow loading": [
+      "performance"
+    ],
+    "dónde lo dejamos": [
+      "session-resume"
+    ],
+    "split commit": [
+      "work-unit-commits"
+    ],
+    "quick edit": [
+      "quick-executor"
+    ],
+    "browser testing": [
+      "e2e-testing"
+    ],
+    "ui cleanup": [
+      "baseline-ui"
+    ],
+    "cpu hotspot": [
+      "perf-profiling"
+    ],
+    "api testing": [
+      "api-testing"
+    ],
+    "criticar": [
+      "code-review-agent"
+    ],
+    "analizar-imagen": [
+      "vision-analyze"
+    ],
+    "readme audit": [
+      "docs-audit"
+    ],
+    "pdf table": [
+      "pdf-utils"
+    ],
+    "harden": [
+      "security-scanner"
+    ],
+    "image bug": [
+      "image-pipeline"
+    ],
+    "cloud": [
+      "infra-audit"
+    ],
+    "create pr": [
+      "branch-pr"
+    ],
+    "script": [
+      "code-generation"
+    ],
+    "session end": [
+      "dreaming"
+    ],
+    "ci/cd": [
+      "infra-audit"
+    ],
+    "auto-skill": [
+      "cross-project-forge"
+    ],
+    "ai overview": [
+      "seo"
+    ],
+    "capture": [
+      "vision-analyze"
+    ],
+    "auditar": [
+      "security-scanner"
+    ],
+    "analyze-ui": [
+      "vision-analyze"
+    ],
+    "promote pattern": [
+      "cross-project-forge"
+    ],
+    "opencode skill": [
+      "opencode-skill-creator"
+    ],
+    "!audit": [
+      "external-auditor"
+    ],
+    "run plan": [
+      "plan-execution"
+    ],
+    "test gap": [
+      "testing-strategy"
+    ],
+    "collection test": [
+      "api-testing"
+    ],
+    "docs completeness": [
+      "docs-audit"
+    ],
+    "benchmark skill": [
+      "opencode-skill-creator"
+    ],
+    "what to test": [
+      "testing-strategy"
+    ],
+    "subagent isolation": [
+      "subagent-isolation"
+    ],
+    "google core update": [
+      "seo"
+    ],
+    "schema validation": [
+      "api-testing",
+      "data-quality"
+    ],
+    "context explosion": [
+      "context-watchdog"
+    ],
+    "engram": [
+      "engram-protocol"
+    ],
+    "screenshot": [
+      "vision-analyze",
+      "visual-testing"
+    ],
+    "data quality check": [
+      "data-quality"
+    ],
+    "parse pdf": [
+      "pdf-utils"
+    ],
+    "insomnia": [
+      "api-testing"
+    ],
+    "new file": [
+      "code-generation"
+    ],
+    "diátaxis": [
+      "docs-audit"
+    ],
+    "new function": [
+      "code-generation"
+    ],
+    "visual-review": [
+      "vision-analyze"
+    ],
+    "test pyramid": [
+      "testing-strategy"
+    ],
+    "/help": [
+      "help"
+    ],
+    "!5fases": [
+      "external-improvement"
+    ],
+    "hypothesis": [
+      "deep-debugging"
+    ],
+    "create issue": [
+      "issue-creation"
+    ],
+    "experiencia previa": [
+      "cross-project-wisdom"
+    ],
+    "execute plan": [
+      "plan-execution"
+    ]
+  }
+}

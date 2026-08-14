@@ -1,0 +1,157 @@
+{
+  "version": "1.0",
+  "description": "Classification of semi-mode allowed commands by risk tier. Used to audit and adjust the allowlist.",
+  "tiers": {
+    "T1_readonly": {
+      "label": "Read-only (safe)",
+      "color": "green",
+      "behavior": "Always auto-allow in semi mode. Read-only info only.",
+      "commands": [
+        { "cmd": "ls", "risk": "none", "notes": "List files — no side effects" },
+        { "cmd": "dir", "risk": "none", "notes": "List files (Windows cmd)" },
+        { "cmd": "pwd", "risk": "none", "notes": "Print working directory" },
+        { "cmd": "cat", "risk": "none", "notes": "Read file contents" },
+        { "cmd": "Get-Content", "risk": "none", "notes": "PowerShell read file" },
+        { "cmd": "type", "risk": "none", "notes": "Cmd alias for Get-Content" },
+        { "cmd": "grep", "risk": "none", "notes": "Search file contents" },
+        { "cmd": "rg", "risk": "none", "notes": "ripgrep — fast content search" },
+        { "cmd": "Select-String", "risk": "none", "notes": "PowerShell grep" },
+        { "cmd": "findstr", "risk": "none", "notes": "Windows find string" },
+        { "cmd": "which", "risk": "none", "notes": "Locate executable" },
+        { "cmd": "Get-Command", "risk": "none", "notes": "PowerShell which" },
+        { "cmd": "Get-Help", "risk": "none", "notes": "PowerShell help system" },
+        { "cmd": "Get-Alias", "risk": "none", "notes": "List aliases" },
+        { "cmd": "Get-ChildItem", "risk": "none", "notes": "List directory contents" },
+        { "cmd": "Test-Path", "risk": "none", "notes": "Check file exists" },
+        { "cmd": "Get-Location", "risk": "none", "notes": "PowerShell pwd" },
+        { "cmd": "git status", "risk": "none", "notes": "Git working tree status" },
+        { "cmd": "git log", "risk": "none", "notes": "Git commit history" },
+        { "cmd": "git diff", "risk": "none", "notes": "Show changes" },
+        { "cmd": "git show", "risk": "none", "notes": "Show object details" },
+        { "cmd": "git branch", "risk": "none", "notes": "List branches" },
+        { "cmd": "git stash list", "risk": "none", "notes": "List stashes" },
+        { "cmd": "git stash show", "risk": "none", "notes": "Show stash contents" }
+      ]
+    },
+    "T2_test_build": {
+      "label": "Test/Build (low risk)",
+      "color": "yellow",
+      "behavior": "Auto-allow in semi mode. Runs tests or reads test output only.",
+      "commands": [
+        { "cmd": "npm test", "risk": "low", "notes": "Run npm test scripts" },
+        { "cmd": "npm run", "risk": "low", "notes": "Run npm scripts (user-defined)" },
+        { "cmd": "pytest", "risk": "low", "notes": "Python test runner" },
+        { "cmd": "go test", "risk": "low", "notes": "Go test runner" },
+        { "cmd": "Invoke-Pester", "risk": "low", "notes": "PowerShell test runner" },
+        { "cmd": "dotnet test", "risk": "low", "notes": ".NET test runner" },
+        { "cmd": "cargo test", "risk": "low", "notes": "Rust test runner" }
+      ]
+    },
+    "T3_write_capable": {
+      "label": "Write-capable (medium risk)",
+      "color": "orange",
+      "behavior": "Should ask in semi mode, or tightly scoped. Can write with shell redirect (>).",
+      "commands": [
+        { "cmd": "echo", "risk": "medium", "notes": "echo text > file writes via shell redirect. Consider restricting." },
+        { "cmd": "Write-Output", "risk": "medium", "notes": "Write-Output text > file writes via shell redirect. Consider restricting." },
+        { "cmd": "npm", "risk": "medium", "notes": "npm install/ci/config modify environment. Too broad." },
+        { "cmd": "pip", "risk": "medium", "notes": "pip install modifies Python environment. Too broad." }
+      ]
+    }
+  },
+  "findings": [
+    {
+      "severity": "high",
+      "file": "scripts/permission-gate.ps1",
+      "pattern": "'^npm test', '^npm run'",
+      "issue": "npm * not in gate, but npm test and npm run ARE. npm install/config NOT allowed. Verify this is intended.",
+      "recommendation": "Add ^npm ci (safe install from lockfile) to gate and semi-agents. Keep npm test and npm run, do NOT add npm install."
+    },
+    {
+      "severity": "high",
+      "file": "scripts/opencode-config/semi-agents.json",
+      "pattern": "\"npm *\": \"allow\"",
+      "issue": "npm * is very broad — allows npm install (downloads + runs lifecycle scripts), npm config (modifies npm config)",
+      "recommendation": "Replace with \"npm test *\", \"npm run *\", \"npm ci *\" individually. Remove broad \"npm *\"."
+    },
+    {
+      "severity": "medium",
+      "file": "scripts/opencode-config/semi-agents.json",
+      "pattern": "\"pip *\": \"allow\"",
+      "issue": "pip * allows pip install (downloads + modifies Python packages), pip uninstall (removes packages)",
+      "recommendation": "Replace with \"pip install --user *\", \"pip freeze *\", \"pip list *\", \"pip show *\". Remove broad \"pip *\"."
+    },
+    {
+      "severity": "medium",
+      "file": "scripts/permission-gate.ps1",
+      "pattern": "'^pip\\s'",
+      "issue": "pip is broad — allows pip install, pip uninstall, etc.",
+      "recommendation": "Same as above: scope to specific subcommands."
+    },
+    {
+      "severity": "medium",
+      "file": "scripts/permission-gate.ps1",
+      "pattern": "'^echo\\s'",
+      "issue": "echo with shell redirect (>) writes files. Unsafe for semi mode.",
+      "recommendation": "Consider removing from allowlist, or add '^echo [^-]' to prevent echo -e or similar."
+    },
+    {
+      "severity": "medium",
+      "file": "scripts/permission-gate.ps1",
+      "pattern": "'^Write-Output'",
+      "issue": "Same as echo — shell redirect writes files.",
+      "recommendation": "Consider removing from allowlist."
+    },
+    {
+      "severity": "low",
+      "file": "scripts/opencode-config/semi-agents.json",
+      "pattern": "\"git branch -D *\": \"ask\"",
+      "issue": "git branch -D is explicitly set to ask. Consistent with gate (no '^git branch -D').",
+      "recommendation": "No change needed. Good example of explicit override."
+    },
+    {
+      "severity": "low",
+      "file": "scripts/opencode-config/semi-agents.json",
+      "pattern": "\"git stash drop *\": \"ask\"",
+      "issue": "git stash drop is explicitly set to ask. Consistent.",
+      "recommendation": "No change needed. Good example of explicit override."
+    }
+  ],
+  "recommendations": [
+    {
+      "id": "R1",
+      "priority": "high",
+      "title": "Tighten npm in semi-agents.json",
+      "action": "Replace 'npm *': 'allow' with 'npm test *', 'npm run *', 'npm ci *'",
+      "files": ["scripts/opencode-config/semi-agents.json"]
+    },
+    {
+      "id": "R2",
+      "priority": "medium",
+      "title": "Tighten pip in semi-agents.json and gate",
+      "action": "Replace broad pip with scoped subcommands. Add 'pip freeze', 'pip list', 'pip show', 'pip install --user'.",
+      "files": ["scripts/opencode-config/semi-agents.json", "scripts/permission-gate.ps1"]
+    },
+    {
+      "id": "R3",
+      "priority": "low",
+      "title": "Review echo/Write-Output in gate only (semi-agents handles echo at gate level)",
+      "action": "Remove echo/Write-Output from gate's semiAllowPatterns. Keep in semi-agents if desired (agent-level control).",
+      "files": ["scripts/permission-gate.ps1"]
+    },
+    {
+      "id": "R4",
+      "priority": "high",
+      "title": "Add 'npm ci' to gate allowlist",
+      "action": "Add '^npm ci' pattern to permission-gate.ps1 as safe npm install variant.",
+      "files": ["scripts/permission-gate.ps1"]
+    },
+    {
+      "id": "R5",
+      "priority": "low",
+      "title": "Audit ask overrides in semi-agents.json",
+      "action": "Check that all 'ask' overrides (git branch -D, git stash drop) match gate deny patterns.",
+      "files": ["scripts/opencode-config/semi-agents.json"]
+    }
+  ]
+}

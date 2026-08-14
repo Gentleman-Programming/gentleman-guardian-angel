@@ -1,0 +1,60 @@
+#!/bin/sh
+#
+# Pre-push hook — Gentleman Agent second line of defense
+# Runs quality gate before push to catch any issues missed by --no-verify.
+# Skippable with: git push --no-verify (NOT recommended)
+#
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+[ -z "$REPO_ROOT" ] && REPO_ROOT="."
+
+echo ""
+echo "=== Pre-Push Quality Gate ==="
+
+# Check if there are any uncommitted changes
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  echo "WARNING: Uncommitted changes detected"
+  echo "  Commit or stash before pushing"
+  echo ""
+fi
+
+# Early exit removed (INFRA-I5): `git diff --cached --quiet` is ALWAYS true
+# right after a commit (index == HEAD) — including --no-verify commits — so the
+# staged-check early-exit skipped the gate exactly when it was needed most.
+# Compare against what is actually being pushed (commits between HEAD and
+# upstream). If that diff is empty (nothing new to push / no upstream), do NOT
+# exit — run the checks anyway (fail-safe). The gate only skips work when
+# there is genuinely nothing new to push AND the checks would be redundant,
+# which a pre-push cannot cheaply prove — so it always runs.
+if git diff --quiet HEAD "@{u}" 2>/dev/null; then
+  echo "Nothing new to push vs upstream — running quality gate anyway (fail-safe)"
+else
+  echo "New commits vs upstream — running quality gate"
+fi
+
+# Run the quality gate on staged changes
+# This catches any issues that --no-verify might have bypassed
+echo "Running quality gate..."
+if [ -f "$REPO_ROOT/.githooks/pre-commit" ]; then
+  # Run pre-commit hook silently to check for blocking issues
+  OUTPUT=$("$REPO_ROOT/.githooks/pre-commit" 2>&1)
+  EXIT_CODE=$?
+  if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "BLOCKED: Quality gate failed. Fix issues before pushing."
+    echo "Use 'git push --no-verify' ONLY if you understand the risks."
+    echo ""
+    exit 1
+  fi
+fi
+
+# Check for any commits that bypassed quality gate
+echo "Checking recent commits for bypassed quality gate..."
+LAST_COMMITS=$(git log --oneline -5 2>/dev/null)
+if echo "$LAST_COMMITS" | grep -q "\-\-no\-verify"; then
+  echo "WARNING: Recent commits used --no-verify"
+  echo "  Consider running quality gate manually"
+fi
+
+echo "Pre-push check passed"
+exit 0

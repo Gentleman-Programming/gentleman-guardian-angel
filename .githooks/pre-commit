@@ -1,0 +1,16 @@
+#!/bin/sh
+#
+# Pre-commit hook — Gentleman Agent quality gate
+# All 21 checks run via pre-commit-gate.ps1 (single pwsh invocation).
+# Skippable with: git commit --no-verify
+#
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+[ -z "$REPO_ROOT" ] && REPO_ROOT="."
+
+if command -v pwsh >/dev/null 2>&1; then
+  exec pwsh -NoProfile -ExecutionPolicy Bypass -File "$REPO_ROOT/.githooks/pre-commit-gate.ps1" -RepoRoot "$REPO_ROOT"
+else
+  echo "ERROR: PowerShell 7 (pwsh) not found"
+  exit 1
+fi

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 8000,
+    "keep": {
+      "tokens": 15000
+    }
+  },
+  "model": "opencode/big-pickle",
+  "small_model": "opencode/free",
+  "agent": {
+    "default": {
+      "depth": 3
+    }
+  },
+  "watcher": {
+    "enabled": true,
+    "ignore": [
+      "node_modules",
+      ".git",
+      "dist"
+    ]
+  },
+  "snapshot": false,
+  "tools": {
+    "file": {
+      "maxBytes": 262144,
+      "maxLines": 500
+    }
+  },
+  "_resource_tier": "high",
+  "_resource_notes": [
+    "For systems with 8GB+ RAM, 6+ cores, dedicated GPU or cloud LLM",
+    "File watcher enabled with smart ignore patterns",
+    "subagent_depth=3 allows deeper agent hierarchies",
+    "Full compaction with generous reserved buffer",
+    "All MCP servers available",
+    "OPENCODE_MEMORY_LIMIT=0 uses default formula: max(2GB, min(25% total RAM, 4GB))"
+  ]
+}

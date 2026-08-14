@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# Post-commit hook — Gentleman Agent repo→global sync
+# Syncs canonical skills to global config after successful commits.
+# Silent by default — only reports on actual changes.
+#
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+[ -z "$REPO_ROOT" ] && exit 0
+
+# Detect PowerShell 7 (cross-platform)
+if command -v pwsh >/dev/null 2>&1; then
+  PWSH="pwsh"
+elif command -v pwsh.exe >/dev/null 2>&1; then
+  PWSH="pwsh.exe"
+else
+  exit 0  # Silent exit if pwsh not available
+fi
+
+# Only sync on skill changes
+SKILL_CHANGED=$(git diff-tree --name-only HEAD~1..HEAD 2>/dev/null | grep -E '\.agents/skills/' | head -1)
+if [ -z "$SKILL_CHANGED" ]; then
+  exit 0
+fi
+
+# Sync repo → global with -AutoFix
+OUTPUT=$($PWSH -NoProfile -ExecutionPolicy Bypass -Command "
+  & '$REPO_ROOT/scripts/check-skill-drift.ps1' -AutoFix
+" 2>&1)
+
+# Only print if something actually happened
+if echo "$OUTPUT" | grep -qE "(Created|Fixed|Missing junction)"; then
+  echo ""
+  echo "=== Repo→Global Sync ==="
+  echo "$OUTPUT"
+fi

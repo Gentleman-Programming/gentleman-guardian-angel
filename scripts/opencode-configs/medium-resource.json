@@ -1,0 +1,44 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 6000,
+    "keep": {
+      "tokens": 12000
+    }
+  },
+  "model": "opencode/big-pickle",
+  "small_model": "opencode/free",
+  "agent": {
+    "default": {
+      "depth": 2
+    }
+  },
+  "watcher": {
+    "enabled": false,
+    "ignore": [
+      "node_modules",
+      ".git",
+      "dist",
+      "temp"
+    ]
+  },
+  "snapshot": false,
+  "tools": {
+    "file": {
+      "maxBytes": 131072,
+      "maxLines": 200
+    }
+  },
+  "_resource_tier": "medium",
+  "_resource_notes": [
+    "For systems with 4-8GB RAM, 4 cores, integrated/low-end GPU",
+    "File watcher disabled but with ignore patterns for common noise dirs if enabled",
+    "subagent_depth=2 allows limited parallel work",
+    "Medium compaction settings balance context vs memory",
+    "small_model for lightweight tasks (title generation)",
+    "Tool output limits prevent large blob accumulation",
+    "Use OPENCODE_DIAGNOSTICS=1 for memory monitoring"
+  ]
+}

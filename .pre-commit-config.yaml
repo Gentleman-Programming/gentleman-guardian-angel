@@ -1,0 +1,78 @@
+# Gentleman Agent — pre-commit config
+# Install: py -m pre_commit install
+# Run all: py -m pre_commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.44.0
+    hooks:
+      - id: markdownlint
+        args: [--disable=MD013]
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.0
+    hooks:
+      - id: yamllint
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.0
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      - id: pssa-gate
+        name: PSSA Gate
+        entry: pwsh -NoProfile -File scripts/pssa-gate.ps1 -Mode Check
+        language: system
+        files: \.ps1$
+        pass_filenames: false
+
+      - id: cross-ref-check
+        name: Cross-ref validation
+        entry: pwsh -NoProfile -File scripts/cross-ref-check.ps1 -Quiet
+        language: system
+        files: \.(ps1|md|json|yml|yaml|jsonc)$
+        pass_filenames: false
+
+      - id: secrets-scan
+        name: Fast secrets scan
+        entry: pwsh -NoProfile -File scripts/leak-guard.ps1
+        language: system
+        pass_filenames: false
+
+      - id: pester-gate
+        name: Pester tests
+        entry: pwsh -NoProfile -Command "Invoke-Pester -Path './scripts/tests' -Output Detailed"
+        language: system
+        types: [file]
+        files: \.ps1$
+        pass_filenames: false
+          timeout: 120
+
+      - id: deadcode-ratchet
+        name: Dead-code ratchet (PS)
+        entry: pwsh -NoProfile -File scripts/check-deadcode.ps1
+        language: system
+        pass_filenames: false
+
+      - id: opencode-config-sync
+        name: opencode.json sync check
+        entry: node scripts/lib/generate-opencode-config.js --validate
+        language: system
+        files: (opencode\.json|permission-templates\.json|opencode-base\.json|agent-overrides\.json)
+        pass_filenames: false

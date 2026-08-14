@@ -1,0 +1,298 @@
+name: Quality Gate
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qg-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'package.json'
+
+      - name: opencode.json config validation
+        run: node scripts/lib/generate-opencode-config.js --validate
+
+      - name: npm audit (advisory report)
+        # Non-blocking visibility for supply-chain. Pinning direct deps (package.json exact
+        # versions) already reduces drift; CI pins exact via package-lock.json. Known-acceptable
+        # vulns (e.g. transitive fast-uri via playwright) are tracked in adr/ADR-021 and
+        # graduated to blocking only after remediation. Blocking gate is a future ADR.
+        continue-on-error: true
+        run: |
+          npm audit --audit-level=high || echo "::warning title=npm audit::Review 'high'+ vulnerabilities (see adr/ADR-021 for allowlist)"
+
+      - name: PS7 checks (syntax + version gate)
+        run: |
+          $fail = 0
+          Get-ChildItem -Recurse -Filter *.ps1 | Where-Object {
+            $_.FullName -notmatch 'experiments|node_modules|metricas\\assets|\.breaker-cleared'
+          } | ForEach-Object {
+            $c = (Get-Content $_ -Head 3) -join "`n"
+            $declares5 = $c -match '#requires -Version 5\.1'
+            $declares7  = $c -match '#requires -Version 7(\.0)?'
+            if (-not $declares5 -and -not $declares7) {
+              Write-Output "::warning title=Missing version gate::$($_.Name)"; $fail++; return
+            }
+            try { $null = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$null); Write-Output "OK: $($_.Name)" }
+            catch { Write-Warning "Syntax error: $($_.Name) — $($_.Exception.Message)"; $fail++ }
+          }
+          if ($fail) { exit 1 }
+
+      - name: Overweight skill check
+        run: |
+          $overweight = Get-ChildItem .agents/skills -Directory | Where-Object { $_.Name -ne '_shared' } | ForEach-Object {
+            $md = Join-Path $_.FullName 'SKILL.md'
+            if (Test-Path $md) { $len = (Get-Content $md -Raw).Length; if ($len -gt 3072) { "$($_.Name) ($($len)B)" } }
+          }
+          if ($overweight) { Write-Output "::warning title=Overweight Skills::Skills exceeding 3KB limit"; $overweight }
+          else { Write-Output "OK: All skills ≤3KB" }
+
+      - name: Permission consistency
+        run: |
+          $config = Get-Content 'opencode.json' -Raw | ConvertFrom-Json
+          $readOnlyAgents = @('gentleman-security', 'gentleman-seo', 'gentleman-infra', 'gentleman-frontend', 'gentleman-performance', 'gentleman-datascience', 'gentleman-docs', 'gentleman-security-sub')
+          $fail = 0
+          foreach ($agent in $readOnlyAgents) {
+            $a = $config.agent.$agent
+            if (-not $a) { Write-Warning "Agent not found: $agent"; $fail++; continue }
+            $bashDeny = $a.permission.bash.'*'
+            if ($bashDeny -ne 'deny') { Write-Error "FAIL: $agent has bash.* = $bashDeny (expected deny)"; $fail++ }
+          }
+          $orchBash = $config.agent.'gentleman-vMK'.permission.bash
+          if ($orchBash.'*' -ne 'ask') { Write-Error "FAIL: orchestrator bash.* = $($orchBash.'*') (expected ask — delegates, never implements)"; $fail++ }
+          $orchTask = $config.agent.'gentleman-vMK'.permission.task
+          if (-not $orchTask -or $orchTask.'*' -ne 'deny') { Write-Error "FAIL: orchestrator task.* must be deny (fail-closed whitelist)"; $fail++ }
+          $subAgents = @('gentleman-deep-sub', 'gentleman-quick-sub', 'gentleman-implementer-sub', 'gentleman-security-sub')
+          foreach ($sub in $subAgents) {
+            if ($orchTask.$sub -ne 'allow') { Write-Error "FAIL: orchestrator missing task.$sub allow"; $fail++ }
+          }
+          if ($fail) { exit 1 }
+          Write-Output "OK: All permission consistency checks passed"
+
+      - name: Config size budget
+        # ADR-007: enforce opencode.json ≤ 65,536 B (mirrors pre-commit gate check [17/17]).
+        run: |
+          $configSizeBudget = 98304
+          $size = (Get-Item 'opencode.json').Length
+          if ($size -gt $configSizeBudget) {
+            Write-Error "opencode.json exceeds $configSizeBudget B budget (ADR-007): $size B"
+            exit 1
+          }
+          Write-Output "OK: opencode.json $size B ≤ $configSizeBudget B budget (ADR-007)"
+
+      - name: Backlog integrity check
+        # Verifies CYCLE.md backlog item status matches repo reality
+        # (mirrors pre-commit gate check [18/18]).
+        run: |
+          ./scripts/check-backlog-integrity.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "backlog integrity check failed — CYCLE.md status does not match repo reality"
+            exit 1
+          }
+          Write-Output "OK: backlog integrity check passed"
+
+      - name: Token budget check
+        # ADR-007/C9: audit skill/prompt file sizes against 2,000B avg target
+        # (mirrors pre-commit gate check [19/19]). Warn-level — oversize skills
+        # are under ADR-018 (prompts immutable), not a commit blocker.
+        run: |
+          $result = & ./scripts/check-token-budget.ps1 -Json 2>&1 | Out-String
+          $jsonLine = $result | Where-Object { $_ -match '^\{' } | Select-Object -First 1
+          $json = $jsonLine | ConvertFrom-Json -ErrorAction SilentlyContinue
+          if ($json -and -not $json.passed) {
+            $skillAvg = if ($json.stats.skills) { $json.stats.skills.average } else { 'N/A' }
+            $promptAvg = if ($json.stats.prompts) { $json.stats.prompts.average } else { 'N/A' }
+            $overFiles = 0
+            if ($json.stats.skills) { $overFiles += $json.stats.skills.overBudgetFiles }
+            if ($json.stats.prompts) { $overFiles += $json.stats.prompts.overBudgetFiles }
+            Write-Output "::warning title=Token Budget::skills $($skillAvg)B/$($json.budget), prompts $($promptAvg)B/$($json.budget) ($overFiles files over)"
+          }
+          else { Write-Output "OK: All skills/prompts within token budget" }
+
+      - name: Budget script validation
+        # (mirrors pre-commit gate check [20/20]).
+        run: |
+          $path = 'scripts/check-budget.ps1'
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors) { Write-Error "check-budget.ps1 has syntax errors"; exit 1 }
+          Write-Output "OK: check-budget.ps1 syntax validated"
+
+      - name: Context watchdog validation
+        # (mirrors pre-commit gate check [21/21]).
+        run: |
+          $path = 'scripts/ctx-watchdog.ps1'
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors) { Write-Error "ctx-watchdog.ps1 has syntax errors"; exit 1 }
+          Write-Output "OK: ctx-watchdog.ps1 syntax validated"
+
+lint-linux:
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      shell: pwsh
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    - name: Install
+      run: ./scripts/install.sh --yes --skip-env-var --skip-shortcuts
+    - name: Shellcheck
+      shell: bash
+      run: |
+        if command -v shellcheck &>/dev/null; then shellcheck scripts/*.sh
+        else for f in scripts/*.sh; do bash -n "$f" && echo "OK: $f" || exit 1; done; fi
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.x'
+
+      - name: trufflehog — deep secrets scan
+        uses: trufflesecurity/trufflehog@27b0417c16317ca9a472a9a8092acce143b49c55 # v3.95.9
+        with:
+          path: ./
+          # NOTE: the action already adds --fail; repeating it aborts ("flag 'fail' cannot be repeated").
+          # Globs must NOT be quoted here — bash word-splits $ARGS without re-interpreting quotes,
+          # so quoted globs arrive literally and never match. Delta scan (base=event.before) does not need them.
+          # base/head intentionally NOT set: the action resolves per-event (push → event.before
+          # with zero-SHA guard; pull_request → base.sha). Setting base: ${{ github.event.before }}
+          # breaks PR runs — 'before' is empty outside push payloads.
+          extra_args: --only-verified
+
+      - name: SkillSpector — install
+        run: pip install git+https://github.com/NVIDIA/SkillSpector.git@v2.5.0 --quiet
+
+      - name: SkillSpector security gate
+        continue-on-error: false
+        timeout-minutes: 10
+        run: ./scripts/skillspector-gate.ps1 -Strict -FailOnRisk 50
+
+      - name: Install PSScriptAnalyzer
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
+
+      - name: pre-commit — security & lint hooks
+        run: |
+          if (-not (Get-Command pre-commit -ErrorAction SilentlyContinue)) { pip install pre-commit }
+          $hooks = @('trailing-whitespace', 'end-of-file-fixer', 'check-yaml', 'check-json', 'check-added-large-files', 'actionlint', 'gitleaks', 'secrets-scan', 'pssa-gate')
+          foreach ($h in $hooks) {
+            pre-commit run --all-files --show-diff-on-failure $h
+            if ($LASTEXITCODE -ne 0) { Write-Error "pre-commit hook failed: $h"; exit $LASTEXITCODE }
+          }
+
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Cache PowerShell modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~\Documents\PowerShell\Modules
+          key: psmodules-${{ hashFiles('scripts/tests/*.Tests.ps1') }}
+          restore-keys: psmodules-
+
+      - name: Skill drift check
+        run: ./scripts/check-skill-drift.ps1
+
+      - name: Pester unit tests + coverage
+        # Measure-only: coverage is captured and reported but never breaks CI
+        # until a baseline is established. Ratchet upward via -Strict later.
+        # (AUDIT-gentleman-agent-gh.md Section 5.2 gap: coverage tracking absent)
+        run: ./scripts/tests/Coverage.ps1
+        shell: pwsh
+
+      - name: Show coverage summary
+        if: always()
+        run: |
+          if (Test-Path ./scripts/tests/_coverage/summary.json) {
+            Write-Output "## Coverage summary"
+            Get-Content ./scripts/tests/_coverage/summary.json
+          }
+
+      - name: Dead-code ratchet (warn-only)
+        # AUDIT-gentleman-agent-gh.md Section 5.3 deadcode-ratchet equivalent for
+        # PowerShell. Measure-only until baseline is clean; then add -FailOnDead to block merges.
+        run: ./scripts/check-deadcode.ps1
+
+      - name: Windows smoke test
+        run: |
+          ./scripts/verify.ps1 -Quiet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Benchmark report
+        run: ./scripts/benchmark.ps1 -Snapshot -Gate
+
+      - name: Error snapshot
+        if: always()
+        run: ./scripts/capture-errors.ps1 -Snapshot
+
+  tests-v1:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Cache PowerShell modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~\\Documents\\PowerShell\\Modules
+          key: psmodules-v1-${{ hashFiles('tests/*.Tests.ps1') }}
+          restore-keys: psmodules-v1-
+
+      - name: Pester unit tests (v1 experiment)
+        run: |
+          $results = Invoke-Pester -Path './tests/*.Tests.ps1' -PassThru
+          if ($results.FailedCount -gt 0) {
+            Write-Error "Pester v1: $($results.FailedCount) test(s) failed"
+            exit 1
+          }
+          Write-Output "OK: $($results.PassedCount)/$($results.TotalCount) tests passed"

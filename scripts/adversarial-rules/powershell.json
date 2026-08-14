@@ -1,0 +1,134 @@
+{
+  "profile": "powershell",
+  "file_extensions": [".ps1", ".psm1", ".psd1"],
+  "rules": [
+    {
+      "id": "PS-CI-01",
+      "name": "Invoke-Expression / iex",
+      "pattern": "\\b(Invoke-Expression|iex)\\b",
+      "severity": "block",
+      "description": "Dynamic string execution — unsanitized input leads to command injection.",
+      "remediation": "Use parameterized scripts or & operator with validated args. Mark `.breaker-cleared/<file>` if this is intentional (e.g. eval-like DSL)."
+    },
+    {
+      "id": "PS-CI-02",
+      "name": "Start-Process with unvalidated args",
+      "pattern": "\\bStart-Process\\b",
+      "severity": "warn",
+      "description": "Arguments not validated can lead to command injection.",
+      "remediation": "Use -ArgumentList with explicit validation. Wrap in ValidateScript."
+    },
+    {
+      "id": "PS-CI-03",
+      "name": "Call operator & with variable command",
+      "pattern": "&\\s*\\$",
+      "severity": "block",
+      "description": "Indirect command execution from variable — injection surface.",
+      "remediation": "Validate command name against allowlist. Mark `.breaker-cleared/<file>` if necessary."
+    },
+    {
+      "id": "PS-CE-01",
+      "name": "Dynamic code compilation",
+      "pattern": "\\[ScriptBlock\\]::Create\\(",
+      "severity": "block",
+      "description": "Dynamic script block creation — bypasses AMSI and static analysis.",
+      "remediation": "Use pre-compiled script blocks. This is almost always a code smell."
+    },
+    {
+      "id": "PS-CE-02",
+      "name": "Dynamic .NET assembly load",
+      "pattern": "\\[System\\.Reflection\\.Assembly\\]::Load",
+      "severity": "block",
+      "description": "Loading arbitrary .NET assemblies — privilege escalation vector.",
+      "remediation": "Pre-compile and reference typed assemblies directly."
+    },
+    {
+      "id": "PS-CE-03",
+      "name": "Add-Type inline C#",
+      "pattern": "\\bAdd-Type\\b",
+      "severity": "warn",
+      "description": "Inline C# compilation can be abused if source is user-controlled.",
+      "remediation": "Use pre-compiled types or validate input."
+    },
+    {
+      "id": "PS-CE-04",
+      "name": "COM object instantiation",
+      "pattern": "New-Object\\s+-ComObject",
+      "severity": "warn",
+      "description": "COM objects can enable privilege escalation.",
+      "remediation": "Validate COM class names against allowlist."
+    },
+    {
+      "id": "PS-SSRF-01",
+      "name": "Invoke-WebRequest / WebClient to dynamic URL",
+      "pattern": "\\b(Invoke-WebRequest|Invoke-RestMethod|WebClient\\b)",
+      "severity": "warn",
+      "description": "Network call with URL — check for SSRF to internal endpoints (169.254.169.254, localhost).",
+      "remediation": "Validate URLs against allowlist. Never use user input for URLs."
+    },
+    {
+      "id": "PS-SSRF-02",
+      "name": "PSDefaultParameterValues redirect",
+      "pattern": "\\$PSDefaultParameterValues",
+      "severity": "block",
+      "description": "Can redirect cmdlet calls (e.g. Invoke-WebRequest) to attacker-controlled proxy.",
+      "remediation": "Never set PSDefaultParameterValues in shared modules."
+    },
+    {
+      "id": "PS-RMT-01",
+      "name": "PowerShell remoting",
+      "pattern": "\\b(Enter-PSSession|New-PSSession|Enter-PSSession|Exit-PSSession)\\b",
+      "severity": "warn",
+      "description": "Remote execution — credential delegation risk.",
+      "remediation": "Use Just Enough Administration (JEA) endpoints."
+    },
+    {
+      "id": "PS-DATA-01",
+      "name": "Secrets in plaintext output",
+      "pattern": "Write-(Host|Output|Information).*\\b(password|secret|token|key|credential)\\b",
+      "severity": "block",
+      "description": "Potential secret leak to console/logs.",
+      "remediation": "Use SecureString and masked output. Never log secrets."
+    },
+    {
+      "id": "PS-DATA-02",
+      "name": "Unencrypted data export",
+      "pattern": "\\b(Export-Clixml|ConvertTo-Csv|Out-File)\\b",
+      "severity": "warn",
+      "description": "Sensitive data may be written unencrypted.",
+      "remediation": "Use Export-Clixml -Secure or encrypt at rest."
+    },
+    {
+      "id": "PS-BND-01",
+      "name": "Execution policy bypass",
+      "pattern": "(?:Set-ExecutionPolicy|\\.powershell\\.exe).*?-Scope\\s+Process|Bypass",
+      "severity": "block",
+      "description": "Bypassing execution policy weakens security boundary.",
+      "remediation": "Fix root cause instead of bypassing."
+    },
+    {
+      "id": "PS-BND-02",
+      "name": "Unblock-File on downloaded content",
+      "pattern": "\\bUnblock-File\\b",
+      "severity": "warn",
+      "description": "Trusting downloaded files is risky.",
+      "remediation": "Verify source before unblocking."
+    },
+    {
+      "id": "PS-AMSI-01",
+      "name": "AMSI bypass technique",
+      "pattern": "\\b(amsiInit|\\[Ref\\]\\.Assembly|amsiInitResult|AMSI\\b)",
+      "severity": "block",
+      "description": "AMSI bypass patterns — almost always malicious.",
+      "remediation": "Remove immediately. This has no legitimate use."
+    },
+    {
+      "id": "PS-ENV-01",
+      "name": "Environment variable manipulation (PATH hijack)",
+      "pattern": "\\$env:(PATH|PSModulePath)",
+      "severity": "warn",
+      "description": "Modifying PATH or PSModulePath enables hijacking.",
+      "remediation": "Use fully-qualified paths. Don't modify PATH at runtime."
+    }
+  ]
+}
