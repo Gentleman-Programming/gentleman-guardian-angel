@@ -149,6 +149,46 @@ stop_spinner() {
   fi
 }
 
+# ============================================================================
+# Output Formatting
+# ============================================================================
+
+format_review_output() {
+  local result="$1"
+
+  # If stdout is not a terminal, output plain text without formatting
+  if [[ ! -t 1 ]]; then
+    echo "$result"
+    return
+  fi
+
+  # Print separator before output
+  echo -e "${CYAN}─────────${NC} ${BOLD}Review Result${NC} ${CYAN}─────────${NC}"
+  echo ""
+
+  # Process each line and apply formatting
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # Colorize STATUS: PASSED (handle markdown bold syntax too)
+    if [[ "$line" =~ ^\*?\*?STATUS:[[:space:]]*PASSED\*?\*?$ ]] || [[ "$line" =~ ^STATUS:[[:space:]]*PASSED ]]; then
+      echo -e "${GREEN}${BOLD}${line}${NC}"
+    # Colorize STATUS: FAILED (handle markdown bold syntax too)
+    elif [[ "$line" =~ ^\*?\*?STATUS:[[:space:]]*FAILED\*?\*?$ ]] || [[ "$line" =~ ^STATUS:[[:space:]]*FAILED ]]; then
+      echo -e "${RED}${BOLD}${line}${NC}"
+    # Colorize numbered findings (#N file:line - ...)
+    elif [[ "$line" =~ ^#([0-9]+)[[:space:]]([^[:space:]]+)(.*) ]]; then
+      local num="${BASH_REMATCH[1]}"
+      local file="${BASH_REMATCH[2]}"
+      local rest="${BASH_REMATCH[3]}"
+      echo -e "${YELLOW}#${num}${NC} ${CYAN}${file}${NC}${rest}"
+    else
+      echo "$line"
+    fi
+  done <<< "$result"
+
+  echo ""
+  echo -e "${CYAN}──────────────────────────────────${NC}"
+}
+
 # Defaults
 DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
@@ -1146,8 +1186,7 @@ cmd_run() {
     exit 0
   fi
 
-  echo "$RESULT"
-  echo ""
+  format_review_output "$RESULT"
 
   # Parse result status using strict line-based parser to avoid false matches
   # from echoed instructions (e.g., responses containing both STATUS lines).
