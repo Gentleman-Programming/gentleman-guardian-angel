@@ -37,8 +37,8 @@ Describe 'Binary file detection'
     End
 
     It 'detects binary files'
-      # Create a real binary file
-      dd if=/dev/urandom of=binary.bin bs=1024 count=1 2>/dev/null
+      # Use printf with null byte to ensure git detects as binary
+      printf '\x00binary content' > binary.bin
       git add binary.bin
 
       result=$(get_binary_staged_files)
@@ -47,8 +47,9 @@ Describe 'Binary file detection'
     End
 
     It 'returns multiple binary files'
-      dd if=/dev/urandom of=file1.bin bs=512 count=1 2>/dev/null
-      dd if=/dev/urandom of=file2.bin bs=512 count=1 2>/dev/null
+      # Use printf with null bytes to ensure git detects as binary
+      printf '\x00\x01\x02\x03' > file1.bin
+      printf '\x00\x04\x05\x06' > file2.bin
       git add file1.bin file2.bin
 
       result=$(get_binary_staged_files)
@@ -59,7 +60,8 @@ Describe 'Binary file detection'
 
     It 'only returns binary files when mixed with text'
       echo "text content" > text.ts
-      dd if=/dev/urandom of=image.bin bs=512 count=1 2>/dev/null
+      # Use printf with null byte to ensure git detects as binary
+      printf '\x00image data' > image.bin
       git add text.ts image.bin
 
       result=$(get_binary_staged_files)
