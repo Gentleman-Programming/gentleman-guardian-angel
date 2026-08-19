@@ -331,13 +331,13 @@ EOF
       # Create and stage a file
       echo "const staged = 'STAGED_VALUE';" > test.ts
       git add test.ts
-      
+
       # Modify after staging
       echo "const modified = 'MODIFIED_VALUE';" > test.ts
-      
+
       # Simulate what build_prompt does with use_staged=true
       prompt_content=$(git show :test.ts 2>/dev/null)
-      
+
       The value "$prompt_content" should include "STAGED_VALUE"
       The value "$prompt_content" should not include "MODIFIED_VALUE"
     End
@@ -347,11 +347,30 @@ EOF
       echo "const staged = 'STAGED_VALUE';" > test.ts
       git add test.ts
       git commit -m "initial" --quiet
-      
+
       # For CI mode, we read from filesystem
       file_content=$(cat test.ts)
-      
+
       The value "$file_content" should include "STAGED_VALUE"
+    End
+  End
+
+  Describe 'build_prompt instructs numbered findings'
+    It 'prompt includes #N numbered findings format'
+      echo "const x = 1;" > test.ts
+      git add test.ts
+
+      # Source the real bin/gga, overriding main to prevent execution
+      prompt=$(
+        main() { :; }
+        # shellcheck source=/dev/null
+        source "$PROJECT_ROOT/bin/gga"
+        build_prompt "# Rules" "test.ts" "true"
+      )
+
+      The value "$prompt" should include "#1 file:line - rule violated - description"
+      The value "$prompt" should include "#2 file:line - rule violated - description"
+      The value "$prompt" should include "numbered with #N prefix"
     End
   End
 End
