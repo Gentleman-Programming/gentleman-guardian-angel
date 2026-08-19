@@ -19,6 +19,8 @@
 
 # Colors (in case sourced independently)
 RED='\033[0;31m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 # ============================================================================
@@ -245,6 +247,93 @@ validate_provider() {
 # ============================================================================
 # Provider Execution
 # ============================================================================
+
+# Execute provider with retry, exponential backoff and fallback support.
+# Wraps execute_provider_with_timeout so a hung provider is killed and retried
+# rather than stalling the whole review.
+# Usage: execute_with_retry provider prompt timeout retry_count retry_delay fallback_provider
+execute_with_retry() {
+  local provider="$1"
+  local prompt="$2"
+  local timeout="${3:-300}"
+  local retry_count="${4:-3}"
+  local retry_delay="${5:-2}"
+  local fallback_provider="${6:-}"
+
+  local result
+  local status
+  local attempt=1
+  local current_delay="$retry_delay"
+  local last_error=""
+  local last_status=1
+
+  # Try primary provider with retries
+  while [[ $attempt -le $retry_count ]]; do
+    result=$(execute_provider_with_timeout "$provider" "$prompt" "$timeout" 2>&1)
+    status=$?
+
+    if [[ $status -eq 0 ]]; then
+      printf '%s' "$result"
+      return 0
+    fi
+
+    last_error="$result"
+    last_status=$status
+
+    # Log the failed attempt, unless it was the last one
+    if [[ $attempt -lt $retry_count ]]; then
+      if [[ $status -eq 124 ]]; then
+        echo -e "${YELLOW}⚠️  Provider $provider timed out after ${timeout}s (attempt $attempt/$retry_count)${NC}" >&2
+      else
+        echo -e "${YELLOW}⚠️  Provider $provider failed (attempt $attempt/$retry_count)${NC}" >&2
+        if [[ -n "$last_error" ]]; then
+          echo -e "${YELLOW}   Error: $(echo "$last_error" | head -n 1)${NC}" >&2
+        fi
+      fi
+      echo -e "${CYAN}⏳ Retrying in ${current_delay}s...${NC}" >&2
+      sleep "$current_delay"
+      # Exponential backoff
+      current_delay=$((current_delay * 2))
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  echo -e "${RED}❌ Provider $provider failed after $retry_count attempts${NC}" >&2
+
+  # Try fallback provider if configured
+  if [[ -n "$fallback_provider" ]]; then
+    echo -e "${CYAN}🔄 Attempting fallback provider: $fallback_provider${NC}" >&2
+
+    if ! validate_provider "$fallback_provider" 2>/dev/null; then
+      echo -e "${RED}❌ Fallback provider $fallback_provider is not available${NC}" >&2
+      printf '%s' "$last_error"
+      return "$last_status"
+    fi
+
+    # Fallback gets a single attempt — if the primary needed N tries and still
+    # failed, burning N more on the fallback only delays the failure.
+    result=$(execute_provider_with_timeout "$fallback_provider" "$prompt" "$timeout" 2>&1)
+    status=$?
+
+    if [[ $status -eq 0 ]]; then
+      echo -e "${CYAN}✅ Fallback provider $fallback_provider succeeded${NC}" >&2
+      printf '%s' "$result"
+      return 0
+    fi
+
+    echo -e "${RED}❌ Fallback provider $fallback_provider also failed${NC}" >&2
+    echo -e "${RED}   Primary error: $(echo "$last_error" | head -n 1)${NC}" >&2
+    echo -e "${RED}   Fallback error: $(echo "$result" | head -n 1)${NC}" >&2
+    printf '%s' "$result"
+    return "$status"
+  fi
+
+  # No fallback: propagate the last status so callers can still distinguish a
+  # timeout (124) from a provider error.
+  printf '%s' "$last_error"
+  return "$last_status"
+}
 
 execute_provider() {
   local provider="$1"
