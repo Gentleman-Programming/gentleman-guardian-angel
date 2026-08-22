@@ -173,6 +173,69 @@ EOF
     End
   End
 
+  Describe 'Cache integration with staged content'
+    Include "$PROJECT_ROOT/lib/cache.sh"
+
+    setup() {
+      TEMP_DIR=$(mktemp -d)
+      cd "$TEMP_DIR" || exit 1
+      git init --quiet
+      git config user.email "test@test.com"
+      git config user.name "Test User"
+      echo "rules" > AGENTS.md
+      echo "config" > .gga
+      export CACHE_DIR="$TEMP_DIR/.cache/gga"
+      init_cache "AGENTS.md" ".gga" > /dev/null
+    }
+
+    cleanup() {
+      cd /
+      rm -rf "$TEMP_DIR"
+    }
+
+    BeforeEach 'setup'
+    AfterEach 'cleanup'
+
+    It 'cache key matches staged content, not working directory'
+      echo "version A" > app.ts
+      git add app.ts
+      cache_file_result "app.ts" "PASSED" "true"
+
+      # Modify working directory without staging
+      echo "version B" > app.ts
+
+      # Staged content is still version A -- cache should hit
+      result=$(is_file_cached "app.ts" "true" && echo "HIT" || echo "MISS")
+      The value "$result" should eq "HIT"
+    End
+
+    It 'cache misses when file is re-staged with different content'
+      echo "original" > app.ts
+      git add app.ts
+      cache_file_result "app.ts" "PASSED" "true"
+
+      # Re-stage with new content
+      echo "updated" > app.ts
+      git add app.ts
+
+      result=$(is_file_cached "app.ts" "true" && echo "HIT" || echo "MISS")
+      The value "$result" should eq "MISS"
+    End
+
+    It 'cache works for file deleted from working dir but still staged'
+      echo "staged only" > temp.ts
+      git add temp.ts
+      cache_file_result "temp.ts" "PASSED" "true"
+
+      # Delete from working directory
+      rm temp.ts
+
+      # Cache should still hit since staged content unchanged
+      result=$(is_file_cached "temp.ts" "true" && echo "HIT" || echo "MISS")
+      The value "$result" should eq "HIT"
+    End
+  End
+
   Describe 'get_staged_files function'
     # Source only the necessary parts for testing
     Include "$PROJECT_ROOT/lib/cache.sh"
