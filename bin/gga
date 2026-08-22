@@ -189,6 +189,256 @@ format_review_output() {
   echo -e "${CYAN}──────────────────────────────────${NC}"
 }
 
+# ============================================================================
+# GGA Ignore Functions
+# ============================================================================
+
+DEFAULT_GGA_IGNORE_FILE=".gga-ignore"
+
+# Load entries from .gga-ignore file
+# Returns one entry per line in format: file:line  # reason
+load_gga_ignore() {
+  local ignore_file="${1:-$DEFAULT_GGA_IGNORE_FILE}"
+
+  if [[ ! -f "$ignore_file" ]]; then
+    return
+  fi
+
+  # Read file, skip comments and blank lines
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip empty lines and comment-only lines
+    line=$(echo "$line" | sed 's/^[[:space:]]*//')
+    if [[ -z "$line" || "$line" == \#* ]]; then
+      continue
+    fi
+    echo "$line"
+  done < "$ignore_file"
+}
+
+# Check if a file:line is in the ignore list
+# Returns 0 if ignored, 1 if not
+is_finding_ignored() {
+  local file_line="$1"
+  local ignore_entries="$2"
+
+  if [[ -z "$ignore_entries" ]]; then
+    return 1
+  fi
+
+  while IFS= read -r entry; do
+    # Extract file:line from entry (before the # comment)
+    local entry_file_line
+    entry_file_line=$(echo "$entry" | sed 's/[[:space:]]*#.*$//' | sed 's/[[:space:]]*$//')
+    if [[ "$entry_file_line" == "$file_line" ]]; then
+      return 0
+    fi
+  done <<< "$ignore_entries"
+
+  return 1
+}
+
+# Parse findings from AI output
+# Extracts lines matching: #N file:line - rule - description
+# Outputs: N|file:line|full_line (pipe-separated)
+parse_findings() {
+  local ai_output="$1"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^#([0-9]+)[[:space:]]([^[:space:]]+)(.*) ]]; then
+      local num="${BASH_REMATCH[1]}"
+      local file_ref="${BASH_REMATCH[2]}"
+      echo "${num}|${file_ref}|${line}"
+    fi
+  done <<< "$ai_output"
+}
+
+# Add an entry to .gga-ignore
+add_to_gga_ignore() {
+  local file_line="$1"
+  local reason="$2"
+  local ignore_file="${3:-$DEFAULT_GGA_IGNORE_FILE}"
+
+  # Create file with header if it doesn't exist
+  if [[ ! -f "$ignore_file" ]]; then
+    echo "# .gga-ignore - Dismissed review findings" > "$ignore_file"
+    echo "# Format: file:line  # reason" >> "$ignore_file"
+    echo "" >> "$ignore_file"
+  fi
+
+  echo "${file_line}  # ${reason}" >> "$ignore_file"
+}
+
+# Interactive dismiss flow after a FAILED review
+# Returns the number of remaining (non-dismissed) findings
+prompt_dismiss_findings() {
+  local ai_output="$1"
+
+  # Parse findings from the AI output
+  local findings
+  findings=$(parse_findings "$ai_output")
+
+  if [[ -z "$findings" ]]; then
+    # No parseable findings, can't dismiss
+    return 1
+  fi
+
+  # Build array of finding numbers for validation
+  local valid_numbers=""
+  while IFS='|' read -r num file_ref full_line; do
+    if [[ -n "$num" ]]; then
+      valid_numbers="${valid_numbers} ${num}"
+    fi
+  done <<< "$findings"
+
+  echo ""
+  # Read from /dev/tty for git hook compatibility
+  # Print prompt to /dev/tty explicitly (read -p doesn't work well with stdin redirection)
+  local dismiss_input
+  printf "Dismiss findings? (#s comma-separated, Enter to skip): " > /dev/tty
+  read -r dismiss_input < /dev/tty 2>/dev/null || return 1
+  echo ""
+
+  if [[ -z "$dismiss_input" ]]; then
+    # User pressed Enter without input — skip dismissal
+    return 1
+  fi
+
+  # Parse comma-separated numbers
+  IFS=',' read -ra dismiss_numbers <<< "$dismiss_input"
+
+  local dismissed_count=0
+  for raw_num in "${dismiss_numbers[@]}"; do
+    # Clean: strip whitespace and leading #
+    local num
+    num=$(echo "$raw_num" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/^#//')
+
+    if [[ -z "$num" ]]; then
+      continue
+    fi
+
+    # Validate number is in the findings
+    if ! echo "$valid_numbers" | grep -qw "$num"; then
+      log_warning "Finding #${num} not found, skipping"
+      continue
+    fi
+
+    # Find the file:line for this number
+    local file_ref=""
+    while IFS='|' read -r fnum fref fline; do
+      if [[ "$fnum" == "$num" ]]; then
+        file_ref="$fref"
+        break
+      fi
+    done <<< "$findings"
+
+    if [[ -z "$file_ref" ]]; then
+      continue
+    fi
+
+    # Prompt for reason
+    local reason
+    printf "Reason for #${num}: " > /dev/tty
+    read -r reason < /dev/tty 2>/dev/null || reason="dismissed"
+
+    if [[ -z "$reason" ]]; then
+      reason="dismissed"
+    fi
+
+    # Add to .gga-ignore
+    add_to_gga_ignore "$file_ref" "$reason"
+    log_success "Added to .gga-ignore: ${file_ref}"
+    echo ""
+    dismissed_count=$((dismissed_count + 1))
+  done
+
+  if [[ $dismissed_count -eq 0 ]]; then
+    return 1
+  fi
+
+  # Count total and remaining findings
+  local total_findings=0
+  while IFS='|' read -r num file_ref full_line; do
+    [[ -n "$num" ]] && total_findings=$((total_findings + 1))
+  done <<< "$findings"
+
+  local remaining=$((total_findings - dismissed_count))
+
+  echo ""
+  if [[ $remaining -eq 0 ]]; then
+    echo -e "${GREEN}All findings dismissed.${NC}"
+    return 0
+  else
+    # Show remaining findings
+    echo -e "${BOLD}Remaining findings:${NC}"
+    while IFS='|' read -r fnum fref fline; do
+      if [[ -n "$fnum" ]]; then
+        # Check if this finding was NOT dismissed
+        local was_dismissed=false
+        for raw_num in "${dismiss_numbers[@]}"; do
+          local dnum
+          dnum=$(echo "$raw_num" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/^#//')
+          if [[ "$dnum" == "$fnum" ]]; then
+            was_dismissed=true
+            break
+          fi
+        done
+        if [[ "$was_dismissed" == false ]]; then
+          echo "$fline"
+        fi
+      fi
+    done <<< "$findings"
+    return $remaining
+  fi
+}
+
+# Handle gga ignore subcommands
+cmd_ignore() {
+  local subcommand="${1:-list}"
+
+  case "$subcommand" in
+    list)
+      print_banner
+      local entries
+      entries=$(load_gga_ignore)
+
+      if [[ -z "$entries" ]]; then
+        log_info "No entries in .gga-ignore"
+        if [[ ! -f "$DEFAULT_GGA_IGNORE_FILE" ]]; then
+          echo "  File does not exist yet."
+        else
+          echo "  File exists but has no active entries."
+        fi
+      else
+        echo -e "${BOLD}Ignored findings:${NC}"
+        echo ""
+        while IFS= read -r entry; do
+          echo "  $entry"
+        done <<< "$entries"
+      fi
+      echo ""
+      ;;
+    clear)
+      print_banner
+      if [[ -f "$DEFAULT_GGA_IGNORE_FILE" ]]; then
+        rm "$DEFAULT_GGA_IGNORE_FILE"
+        log_success "Removed .gga-ignore"
+      else
+        log_info "No .gga-ignore file to remove"
+      fi
+      echo ""
+      ;;
+    *)
+      log_error "Unknown ignore command: $subcommand"
+      echo ""
+      echo "Available commands:"
+      echo "  gga ignore list   - Show ignored findings"
+      echo "  gga ignore clear  - Remove .gga-ignore file"
+      echo ""
+      exit 1
+      ;;
+  esac
+}
+
 # Defaults
 DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
@@ -292,6 +542,8 @@ print_help() {
   echo "  cache clear       Clear cache for current project"
   echo "  cache clear-all   Clear all cached data"
   echo "  cache status      Show cache status"
+  echo "  ignore list       Show dismissed findings (.gga-ignore)"
+  echo "  ignore clear      Remove .gga-ignore file"
   echo "  help              Show this help message"
   echo "  version           Show version"
   echo ""
@@ -1202,6 +1454,20 @@ cmd_run() {
       exit 0
     elif [[ "$parsed_status" == "FAILED" ]]; then
       log_error "CODE REVIEW FAILED"
+
+      # Interactive dismiss flow (terminal only, never in CI or PR mode)
+      if [[ -t 1 && "$ci_mode" != true && "$pr_mode" != true ]]; then
+        local dismiss_result=0
+        prompt_dismiss_findings "$RESULT" || dismiss_result=$?
+
+        if [[ $dismiss_result -eq 0 ]]; then
+          # Every finding was dismissed, so nothing is left to block the commit
+          log_success "CODE REVIEW PASSED"
+          echo ""
+          exit 0
+        fi
+      fi
+
       echo ""
       echo "Fix the violations listed above before committing."
       echo ""
@@ -1520,6 +1786,10 @@ build_prompt() {
   local use_staged="${3:-true}"  # Read from staging area by default
   local commit_msg="${4:-}"      # Optional commit message
 
+  # Load .gga-ignore entries and inject as exceptions
+  local ignore_entries
+  ignore_entries=$(load_gga_ignore)
+
   # Start building the prompt
   cat << EOF
 You are a code reviewer. Analyze the files below and validate they comply with the coding standards provided.
@@ -1528,6 +1798,23 @@ You are a code reviewer. Analyze the files below and validate they comply with t
 $rules
 === END CODING STANDARDS ===
 EOF
+
+  # Inject exceptions from .gga-ignore
+  if [[ -n "$ignore_entries" ]]; then
+    echo ""
+    echo "=== EXCEPTIONS (do not flag these) ==="
+    while IFS= read -r entry; do
+      local entry_file_line entry_reason
+      entry_file_line=$(echo "$entry" | sed 's/[[:space:]]*#.*$//' | sed 's/[[:space:]]*$//')
+      entry_reason=$(echo "$entry" | grep -o '#.*$' | sed 's/^#[[:space:]]*//' || true)
+      if [[ -n "$entry_reason" ]]; then
+        echo "- ${entry_file_line} (reason: ${entry_reason})"
+      else
+        echo "- ${entry_file_line}"
+      fi
+    done <<< "$ignore_entries"
+    echo "=== END EXCEPTIONS ==="
+  fi
 
   # Include commit message if provided (from commit-msg hook)
   if [[ -n "$commit_msg" ]]; then
@@ -1610,6 +1897,10 @@ main() {
     cache)
       shift
       cmd_cache "$@"
+      ;;
+    ignore)
+      shift
+      cmd_ignore "$@"
       ;;
     version|--version|-v)
       print_version
