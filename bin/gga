@@ -897,6 +897,38 @@ cmd_run() {
     fi
   fi
 
+  # Exclude binary files
+  local binary_files
+  binary_files=$(get_binary_staged_files)
+  if [[ -n "$binary_files" ]]; then
+    FILES_TO_CHECK=$(filter_binary_files "$FILES_TO_CHECK" "$binary_files")
+
+    # Count and list excluded binaries
+    local binary_count=0
+    local binary_list=""
+    while IFS= read -r file; do
+      if [[ -n "$file" ]]; then
+        binary_count=$((binary_count + 1))
+        if [[ -n "$binary_list" ]]; then
+          binary_list="$binary_list, $file"
+        else
+          binary_list="$file"
+        fi
+      fi
+    done <<< "$binary_files"
+
+    if [[ $binary_count -gt 0 ]]; then
+      log_info "Excluded $binary_count binary file(s): $binary_list"
+    fi
+
+    # Check if any files remain after excluding binaries
+    if [[ -z "$FILES_TO_CHECK" ]]; then
+      log_warning "No text files to review (only binary files staged)"
+      echo ""
+      exit 0
+    fi
+  fi
+
   # Initialize/validate cache
   local files_to_review="$FILES_TO_CHECK"
   local cache_initialized=false
@@ -1121,6 +1153,36 @@ get_staged_files() {
     fi
 
     if [[ "$match" == true && "$excluded" == false ]]; then
+      echo "$file"
+    fi
+  done
+}
+
+get_binary_staged_files() {
+  # Returns list of binary files in the staging area
+  # Binary files show as "-<TAB>-<TAB>filename" in git diff --numstat
+  # Uses process substitution to avoid subshell issues with pipe
+  while IFS=$'\t' read -r added deleted file; do
+    if [[ "$added" == "-" && "$deleted" == "-" ]]; then
+      echo "$file"
+    fi
+  done < <(git diff --cached --numstat --diff-filter=ACM 2>/dev/null)
+}
+
+filter_binary_files() {
+  # Removes binary files from a list of files
+  # $1: newline-separated list of files
+  # $2: newline-separated list of binary files to exclude
+  local files="$1"
+  local binaries="$2"
+
+  if [[ -z "$binaries" ]]; then
+    echo "$files"
+    return
+  fi
+
+  echo "$files" | while IFS= read -r file; do
+    if [[ -n "$file" ]] && ! echo "$binaries" | grep -qxF "$file"; then
       echo "$file"
     fi
   done
