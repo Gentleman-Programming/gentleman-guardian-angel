@@ -197,6 +197,9 @@ DEFAULT_GGA_IGNORE_FILE=".gga-ignore"
 
 # Load entries from .gga-ignore file
 # Returns one entry per line in format: file:line  # reason
+# The path argument is optional and only used by the specs; production callers
+# rely on the default.
+# shellcheck disable=SC2120
 load_gga_ignore() {
   local ignore_file="${1:-$DEFAULT_GGA_IGNORE_FILE}"
 
@@ -207,7 +210,7 @@ load_gga_ignore() {
   # Read file, skip comments and blank lines
   while IFS= read -r line || [[ -n "$line" ]]; do
     # Skip empty lines and comment-only lines
-    line=$(echo "$line" | sed 's/^[[:space:]]*//')
+    line="${line#"${line%%[![:space:]]*}"}"
     if [[ -z "$line" || "$line" == \#* ]]; then
       continue
     fi
@@ -284,7 +287,7 @@ prompt_dismiss_findings() {
 
   # Build array of finding numbers for validation
   local valid_numbers=""
-  while IFS='|' read -r num file_ref full_line; do
+  while IFS='|' read -r num _; do
     if [[ -n "$num" ]]; then
       valid_numbers="${valid_numbers} ${num}"
     fi
@@ -337,7 +340,7 @@ prompt_dismiss_findings() {
 
     # Prompt for reason
     local reason
-    printf "Reason for #${num}: " > /dev/tty
+    printf 'Reason for #%s: ' "$num" > /dev/tty
     read -r reason < /dev/tty 2>/dev/null || reason="dismissed"
 
     if [[ -z "$reason" ]]; then
@@ -357,7 +360,7 @@ prompt_dismiss_findings() {
 
   # Count total and remaining findings
   local total_findings=0
-  while IFS='|' read -r num file_ref full_line; do
+  while IFS='|' read -r num _; do
     [[ -n "$num" ]] && total_findings=$((total_findings + 1))
   done <<< "$findings"
 
