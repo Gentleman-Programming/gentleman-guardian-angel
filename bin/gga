@@ -61,6 +61,8 @@ source "$LIB_DIR/pr_mode.sh"
 
 cleanup() {
   local exit_code=$?
+  # Stop spinner if running
+  stop_spinner
   # Reset terminal colors in case we were in the middle of output
   echo -e "\033[0m" 2>/dev/null || true
   exit $exit_code
@@ -89,6 +91,63 @@ detect_os() {
   esac
 }
 GGA_OS=$(detect_os)
+
+# Spinner state
+SPINNER_PID=""
+
+# ============================================================================
+# Spinner Functions
+# ============================================================================
+
+start_spinner() {
+  local message="${1:-Processing...}"
+
+  # Only show spinner if stderr is a terminal (use stderr so $() doesn't capture it)
+  if [[ ! -t 2 ]]; then
+    return
+  fi
+
+  # Spinner characters (braille pattern)
+  local spinner_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  # Capture colors for subshell (variables don't inherit to background process)
+  local cyan=$'\033[0;36m'
+  local nc=$'\033[0m'
+
+  (
+    local i=0
+    local len=${#spinner_chars}
+    while true; do
+      local char="${spinner_chars:$i:1}"
+      printf "\r%s%s%s %s" "$cyan" "$char" "$nc" "$message" >&2
+      i=$(( (i + 1) % len ))
+      sleep 0.1
+    done
+  ) &
+
+  SPINNER_PID=$!
+  # Ensure spinner is killed if script exits
+  disown "$SPINNER_PID" 2>/dev/null || true
+}
+
+stop_spinner() {
+  # Only if spinner was started
+  if [[ -z "$SPINNER_PID" ]]; then
+    return
+  fi
+
+  # Kill spinner process
+  if kill -0 "$SPINNER_PID" 2>/dev/null; then
+    kill "$SPINNER_PID" 2>/dev/null || true
+    wait "$SPINNER_PID" 2>/dev/null || true
+  fi
+
+  SPINNER_PID=""
+
+  # Clear spinner line (only if stderr is terminal)
+  if [[ -t 2 ]]; then
+    printf "\r\033[K" >&2
+  fi
+}
 
 # Defaults
 DEFAULT_FILE_PATTERNS="*"
@@ -1053,8 +1112,10 @@ cmd_run() {
   # Temporarily disable set -e to capture exit status properly
   # (bash 3.2 on macOS can exit on non-zero in command substitution)
   set +e
+  start_spinner "Reviewing code..."
   RESULT=$(execute_provider_with_timeout "$PROVIDER" "$PROMPT" "$TIMEOUT")
   EXEC_STATUS=$?
+  stop_spinner
   set -e
 
   if [[ $EXEC_STATUS -eq 124 ]]; then
