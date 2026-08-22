@@ -446,6 +446,9 @@ DEFAULT_STRICT_MODE="true"
 DEFAULT_TIMEOUT="300"  # 5 minutes - generous default for large reviews
 UPDATE_CHECK_REPO="Gentleman-Programming/gentleman-guardian-angel"
 DEFAULT_MAX_FILE_SIZE="100000"  # 100KB in bytes, 0 = no limit
+DEFAULT_RETRY_COUNT="3"         # Number of retry attempts
+DEFAULT_RETRY_DELAY="2"         # Initial delay in seconds (doubles each retry)
+DEFAULT_FALLBACK_PROVIDER=""    # Fallback provider if primary fails (empty = no fallback)
 
 # ============================================================================
 # Helper Functions
@@ -574,6 +577,9 @@ print_help() {
   echo "  OPENCODE_VARIANT   OpenCode reasoning effort/variant (default: unset)"
   echo "  OPENCODE_AGENT     OpenCode agent profile (default: unset)"
   echo "  MAX_FILE_SIZE      Max file size in bytes, 0=no limit (default: 100000)"
+  echo "  RETRY_COUNT        Number of retry attempts on failure (default: 3)"
+  echo "  RETRY_DELAY        Initial retry delay in seconds (default: 2)"
+  echo "  FALLBACK_PROVIDER  Fallback provider if primary fails (default: none)"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init               # Create sample config"
@@ -639,6 +645,9 @@ load_config() {
   OPENCODE_VARIANT=""
   OPENCODE_AGENT=""
   MAX_FILE_SIZE="$DEFAULT_MAX_FILE_SIZE"
+  RETRY_COUNT="$DEFAULT_RETRY_COUNT"
+  RETRY_DELAY="$DEFAULT_RETRY_DELAY"
+  FALLBACK_PROVIDER="$DEFAULT_FALLBACK_PROVIDER"
 
   # Load global config first (platform-aware path)
   GLOBAL_CONFIG=$(get_global_config_path)
@@ -727,6 +736,14 @@ cmd_config() {
     echo -e "  PR_BASE_BRANCH:    ${CYAN}$PR_BASE_BRANCH${NC}"
   else
     echo -e "  PR_BASE_BRANCH:    ${YELLOW}auto-detect${NC}"
+  fi
+  echo -e "  MAX_FILE_SIZE:     ${CYAN}$MAX_FILE_SIZE${NC}"
+  echo -e "  RETRY_COUNT:       ${CYAN}$RETRY_COUNT${NC}"
+  echo -e "  RETRY_DELAY:       ${CYAN}${RETRY_DELAY}s${NC}"
+  if [[ -n "$FALLBACK_PROVIDER" ]]; then
+    echo -e "  FALLBACK_PROVIDER: ${CYAN}$FALLBACK_PROVIDER${NC}"
+  else
+    echo -e "  FALLBACK_PROVIDER: ${YELLOW}None${NC}"
   fi
   echo ""
 
@@ -824,6 +841,17 @@ TIMEOUT="300"
 # Use --force to override
 # Default: 100000 (100KB)
 MAX_FILE_SIZE="100000"
+
+# Retry settings for provider failures
+# RETRY_COUNT: Number of retry attempts (default: 3)
+# RETRY_DELAY: Initial delay in seconds, doubles each retry (default: 2)
+RETRY_COUNT="3"
+RETRY_DELAY="2"
+
+# Fallback provider if primary provider fails after all retries
+# Leave empty to disable fallback
+# Example: FALLBACK_PROVIDER="gemini"
+FALLBACK_PROVIDER=""
 EOF
 
   log_success "Created config file: $PROJECT_CONFIG"
@@ -1397,15 +1425,18 @@ cmd_run() {
     PROMPT=$(build_prompt "$RULES" "$files_to_review" "$use_staged" "$commit_msg")
   fi
 
-  # Execute review with timeout and progress feedback
-  log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
+  # Execute review with retry, timeout and progress feedback
+  log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s, up to ${RETRY_COUNT} attempts)..."
+  if [[ -n "$FALLBACK_PROVIDER" ]]; then
+    log_info "Fallback: $FALLBACK_PROVIDER"
+  fi
   echo ""
 
   # Temporarily disable set -e to capture exit status properly
   # (bash 3.2 on macOS can exit on non-zero in command substitution)
   set +e
   start_spinner "Reviewing code..."
-  RESULT=$(execute_provider_with_timeout "$PROVIDER" "$PROMPT" "$TIMEOUT")
+  RESULT=$(execute_with_retry "$PROVIDER" "$PROMPT" "$TIMEOUT" "$RETRY_COUNT" "$RETRY_DELAY" "$FALLBACK_PROVIDER")
   EXEC_STATUS=$?
   stop_spinner
   set -e
