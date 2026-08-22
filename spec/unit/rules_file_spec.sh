@@ -30,11 +30,26 @@ Describe 'Rules file configuration'
       git config user.email "test@test.com"
       git config user.name "Test"
       echo 'PROVIDER="claude"' > .gga
+
+      # These cases assert on output that cmd_run() prints *after* it validates
+      # the provider, so they need a provider on PATH. Stub one instead of
+      # depending on a real CLI being installed: otherwise the suite passes on a
+      # developer machine that happens to have Claude and fails in CI, which is
+      # exactly what happened.
+      ORIGINAL_PATH="$PATH"
+      TEST_BIN_DIR=$(mktemp -d)
+      cat > "$TEST_BIN_DIR/claude" <<'STUB'
+#!/usr/bin/env bash
+echo "STATUS: PASSED"
+STUB
+      chmod +x "$TEST_BIN_DIR/claude"
+      PATH="$TEST_BIN_DIR:$PATH"
     }
 
     cleanup() {
+      PATH="$ORIGINAL_PATH"
       cd /
-      rm -rf "$TEMP_DIR"
+      rm -rf "$TEMP_DIR" "$TEST_BIN_DIR"
     }
 
     BeforeEach 'setup'
