@@ -233,11 +233,10 @@ EOF
 STATUS: PASSED
 STATUS: FAILED
 
-**If FAILED:** List each violation with:
-- File name
-- Line number (if applicable)
-- Rule violated
-- Description of the issue
+**If FAILED:** List each violation numbered with #N prefix:
+#1 file:line - rule violated - description
+#2 file:line - rule violated - description
+...
 
 **If PASSED:** Confirm all files comply with the coding standards.
 
