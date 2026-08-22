@@ -96,6 +96,7 @@ DEFAULT_RULES_FILE="AGENTS.md"
 DEFAULT_STRICT_MODE="true"
 DEFAULT_TIMEOUT="300"  # 5 minutes - generous default for large reviews
 UPDATE_CHECK_REPO="Gentleman-Programming/gentleman-guardian-angel"
+DEFAULT_MAX_FILE_SIZE="100000"  # 100KB in bytes, 0 = no limit
 
 # ============================================================================
 # Helper Functions
@@ -202,6 +203,7 @@ print_help() {
   echo "  --pr-mode         PR mode: review all files changed in the full PR"
   echo "                    Auto-detects base branch (main/master/develop)"
   echo "  --diff-only       With --pr-mode: send only diffs (faster, cheaper)"
+  echo "  --force           Ignore MAX_FILE_SIZE limit (may fail due to context limits)"
   echo ""
   echo -e "${BOLD}CONFIGURATION:${NC}"
   echo -e "  Create a ${CYAN}.gga${NC} file in your project root or"
@@ -220,6 +222,7 @@ print_help() {
   echo "  PR_BASE_BRANCH     Base branch for --pr-mode (default: auto-detect)"
   echo "  OPENCODE_VARIANT   OpenCode reasoning effort/variant (default: unset)"
   echo "  OPENCODE_AGENT     OpenCode agent profile (default: unset)"
+  echo "  MAX_FILE_SIZE      Max file size in bytes, 0=no limit (default: 100000)"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init               # Create sample config"
@@ -284,6 +287,7 @@ load_config() {
   PR_BASE_BRANCH=""
   OPENCODE_VARIANT=""
   OPENCODE_AGENT=""
+  MAX_FILE_SIZE="$DEFAULT_MAX_FILE_SIZE"
 
   # Load global config first (platform-aware path)
   GLOBAL_CONFIG=$(get_global_config_path)
@@ -464,6 +468,11 @@ TIMEOUT="300"
 # Base branch for --pr-mode (auto-detects main/master/develop if empty)
 # Default: auto-detect
 # PR_BASE_BRANCH="main"
+# Maximum file size in bytes (0 = no limit)
+# Files exceeding this limit will block the review
+# Use --force to override
+# Default: 100000 (100KB)
+MAX_FILE_SIZE="100000"
 EOF
 
   log_success "Created config file: $PROJECT_CONFIG"
@@ -748,8 +757,9 @@ cmd_run() {
   local ci_mode=false
   local pr_mode=false
   local diff_only=false
+  local force_mode=false
   local commit_msg_file=""
-  
+
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
@@ -766,6 +776,9 @@ cmd_run() {
         ;;
       --diff-only)
         diff_only=true
+        ;;
+      --force)
+        force_mode=true
         ;;
       *)
         # Non-flag argument is the commit message file (from commit-msg hook)
@@ -926,6 +939,34 @@ cmd_run() {
       log_warning "No text files to review (only binary files staged)"
       echo ""
       exit 0
+    fi
+  fi
+
+  # Check file sizes
+  if [[ "$force_mode" != "true" && -n "$MAX_FILE_SIZE" && "$MAX_FILE_SIZE" != "0" ]]; then
+    local large_files
+    large_files=$(check_file_sizes "$FILES_TO_CHECK" "$MAX_FILE_SIZE" "$use_staged")
+
+    if [[ -n "$large_files" ]]; then
+      local max_size_human
+      max_size_human=$(format_file_size "$MAX_FILE_SIZE")
+
+      echo ""
+      log_warning "Files exceed MAX_FILE_SIZE ($max_size_human):"
+      while IFS=':' read -r file size; do
+        if [[ -n "$file" ]]; then
+          local size_human
+          size_human=$(format_file_size "$size")
+          echo "  - $file ($size_human)"
+        fi
+      done <<< "$large_files"
+      echo ""
+      echo "Options:"
+      echo "  1. Exclude these files from staging: git reset HEAD <file>"
+      echo "  2. Increase MAX_FILE_SIZE in .gga"
+      echo "  3. Use --force to review anyway (may fail due to context limits)"
+      echo ""
+      exit 1
     fi
   fi
 
@@ -1186,6 +1227,57 @@ filter_binary_files() {
       echo "$file"
     fi
   done
+}
+
+check_file_sizes() {
+  # Checks if any files exceed MAX_FILE_SIZE
+  # $1: newline-separated list of files
+  # $2: max file size in bytes (0 = no limit)
+  # $3: use_staged - if "true", check staged content size
+  # Returns: newline-separated list of files exceeding limit (empty if none)
+  local files="$1"
+  local max_size="$2"
+  local use_staged="${3:-false}"
+
+  # No limit if max_size is 0 or empty
+  if [[ -z "$max_size" || "$max_size" == "0" ]]; then
+    return
+  fi
+
+  while IFS= read -r file; do
+    if [[ -z "$file" ]]; then
+      continue
+    fi
+
+    local file_size
+    if [[ "$use_staged" == "true" ]]; then
+      # Get size of staged content
+      file_size=$(git show ":$file" 2>/dev/null | wc -c)
+    else
+      # Get size from filesystem
+      if [[ -f "$file" ]]; then
+        file_size=$(wc -c < "$file")
+      else
+        file_size=0
+      fi
+    fi
+
+    if [[ "$file_size" -gt "$max_size" ]]; then
+      echo "$file:$file_size"
+    fi
+  done <<< "$files"
+}
+
+format_file_size() {
+  # Formats bytes into human-readable format
+  local bytes="$1"
+  if [[ "$bytes" -ge 1048576 ]]; then
+    echo "$(awk "BEGIN {printf \"%.1f\", $bytes/1048576}")MB"
+  elif [[ "$bytes" -ge 1024 ]]; then
+    echo "$(awk "BEGIN {printf \"%.1f\", $bytes/1024}")KB"
+  else
+    echo "${bytes}B"
+  fi
 }
 
 get_ci_files() {
