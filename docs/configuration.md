@@ -15,6 +15,11 @@ Create this file in your project root:
 # Options: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model], github:<model>
 PROVIDER="claude"
 
+# Fallback chain (optional) — comma-separated, tried in order
+# On transient failure (timeout, rate-limit, network), GGA advances to the next provider.
+# On config error (missing API key, auth rejection), GGA aborts immediately.
+PROVIDER="claude,gemini,ollama:llama3"
+
 # File patterns to review (comma-separated globs)
 # Default: * (all files)
 FILE_PATTERNS="*.ts,*.tsx,*.js,*.jsx"
@@ -45,7 +50,7 @@ TIMEOUT="300"
 
 | Option             | Required | Default     | Description                              |
 | ------------------ | -------- | ----------- | ---------------------------------------- |
-| `PROVIDER`         | ✅ Yes   | -           | AI provider to use                       |
+| `PROVIDER`         | ✅ Yes   | -           | AI provider to use (comma-separated for fallback chain) |
 | `FILE_PATTERNS`    | No       | `*`         | Comma-separated file patterns to include |
 | `EXCLUDE_PATTERNS` | No       | -           | Comma-separated file patterns to exclude |
 | `RULES_FILE`       | No       | `AGENTS.md` | Path to your coding standards file       |

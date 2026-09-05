@@ -25,6 +25,9 @@ NC='\033[0m'
 # Provider Validation
 # ============================================================================
 
+# Returns 0 when the provider is usable, 127 when a dependency (CLI/tool) is
+# missing (TRANSIENT — fallback chain should advance), 1 on configuration
+# errors (CONFIG — chain should abort).
 validate_provider() {
   local provider="$1"
   local base_provider="${provider%%:*}"
@@ -37,7 +40,7 @@ validate_provider() {
         echo "Install Claude Code CLI:"
         echo "  https://claude.ai/code"
         echo ""
-        return 1
+        return 127
       fi
       ;;
     gemini)
@@ -49,7 +52,7 @@ validate_provider() {
         echo "  # or"
         echo "  brew install gemini"
         echo ""
-        return 1
+        return 127
       fi
       ;;
     codex)
@@ -61,7 +64,7 @@ validate_provider() {
         echo "  # or"
         echo "  brew install --cask codex"
         echo ""
-        return 1
+        return 127
       fi
       ;;
     opencode)
@@ -71,7 +74,7 @@ validate_provider() {
         echo "Install OpenCode CLI:"
         echo "  https://opencode.ai"
         echo ""
-        return 1
+        return 127
       fi
       ;;
     cursor)
@@ -81,7 +84,7 @@ validate_provider() {
         echo "Install Cursor Agent CLI:"
         echo "  curl https://cursor.com/install -fsS | bash"
         echo ""
-        return 1
+        return 127
       fi
       ;;
     kilo)
@@ -91,7 +94,7 @@ validate_provider() {
         echo "Install Kilo CLI:"
         echo "  npm install -g @kilocode/cli"
         echo ""
-        return 1
+        return 127
       fi
       ;;
     kiro)
@@ -101,7 +104,7 @@ validate_provider() {
         echo "Install Kiro CLI:"
         echo "  https://kiro.dev/downloads/"
         echo ""
-        return 1
+        return 127
       fi
       local model="${provider#*:}"
       if [[ "$model" != "$provider" && -n "$model" ]]; then
@@ -121,7 +124,7 @@ validate_provider() {
         echo "  # or"
         echo "  brew install ollama"
         echo ""
-        return 1
+        return 127
       fi
       # Check if model is specified
       local model="${provider#*:}"
@@ -145,7 +148,7 @@ validate_provider() {
         echo "  # Ubuntu/Debian: sudo apt-get install curl"
         echo "  # macOS: brew install curl"
         echo ""
-        return 1
+        return 127
       fi
       ;;
     github)
@@ -160,7 +163,7 @@ validate_provider() {
         echo "Then authenticate:"
         echo "  gh auth login"
         echo ""
-        return 1
+        return 127
       fi
       # GitHub Models requires curl for API calls
       if ! command -v curl &> /dev/null; then
@@ -171,7 +174,7 @@ validate_provider() {
         echo "  # Ubuntu/Debian: sudo apt-get install curl"
         echo "  # macOS: brew install curl"
         echo ""
-        return 1
+        return 127
       fi
       # Model is required for GitHub Models
       local model="${provider#*:}"
@@ -209,14 +212,14 @@ validate_provider() {
         echo "  # Ubuntu/Debian: sudo apt-get install curl"
         echo "  # macOS: brew install curl"
         echo ""
-        return 1
+        return 127
       fi
       if ! command -v python3 &> /dev/null; then
         echo -e "${RED}❌ python3 not found${NC}"
         echo ""
         echo "MiniMax response parsing requires python3."
         echo ""
-        return 1
+        return 127
       fi
       ;;
     *)
@@ -240,6 +243,142 @@ validate_provider() {
   esac
 
   return 0
+}
+
+# ============================================================================
+# Provider List Parsing (Phase 2 — Fallback Chain)
+# ============================================================================
+
+# Parse comma-separated PROVIDER into an ordered array.
+# Usage: parse_provider_list "$PROVIDER" array_name
+# Fills the caller array via nameref (bash 4.3+).
+# Trims whitespace, drops empty segments.
+parse_provider_list() {
+  local raw="$1"
+  local -n _out="$2"
+  local IFS=','
+  local segment
+
+  _out=()
+  for segment in $raw; do
+    # Trim leading/trailing whitespace via parameter expansion
+    segment="${segment#"${segment%%[![:space:]]*}"}"
+    segment="${segment%"${segment##*[![:space:]]}"}"
+    [[ -z "$segment" ]] && continue
+    _out+=("$segment")
+  done
+}
+
+# ============================================================================
+# Error Classification (Phase 2 — Fallback Chain)
+# ============================================================================
+
+# Classify a provider error as TRANSIENT or CONFIG.
+# Usage: classify_provider_error <exit_code> <combined_output>
+# Prints: TRANSIENT or CONFIG
+#
+# Classification rules (design §Interfaces / Contracts):
+#   CONFIG patterns (win on conflict):
+#     - empty API key, MINIMAX_API_KEY, API key, not authenticated
+#     - HTTP 401, 403
+#     - invalid model, requires a model, Unknown provider
+#   TRANSIENT (default):
+#     - exit 124, 126, 127
+#     - HTTP 429, 500, 502, 503
+#     - connection reset/refused, timeout, rate limit
+#     - unknown errors
+classify_provider_error() {
+  local code="$1"
+  local output="$2"
+
+  # CONFIG patterns — checked first so they win on conflict
+  if [[ "$output" =~ (API\ key|MINIMAX_API_KEY|not\ authenticated|Unknown\ provider|requires\ a\ model|Invalid.*model|401|403) ]]; then
+    echo "CONFIG"
+    return
+  fi
+
+  # TRANSIENT by exit code
+  case "$code" in
+    124|126|127)
+      echo "TRANSIENT"
+      return
+      ;;
+  esac
+
+  # TRANSIENT by output patterns
+  if [[ "$output" =~ (429|500|502|503|connection\ (reset|refused)|timed\ out|timeout|rate.?limit|Failed\ to\ connect) ]]; then
+    echo "TRANSIENT"
+    return
+  fi
+
+  # Unknown → TRANSIENT (conservative default)
+  echo "TRANSIENT"
+}
+
+# ============================================================================
+# Fallback Dispatch Wrapper (Phase 2 — Fallback Chain)
+# ============================================================================
+
+# Execute providers in order, advancing on TRANSIENT, aborting on CONFIG.
+# Usage: execute_with_fallback <prompt> <timeout> <chain_array_name>
+# Returns: 0 on success; last exit code on exhaustion or CONFIG abort.
+execute_with_fallback() {
+  local prompt="$1"
+  local timeout="$2"
+  local -n _chain="$3"
+  local chain_len="${#_chain[@]}"
+  local last_exit=1
+  local last_output=""
+  local provider
+  local i
+
+  for (( i=0; i<chain_len; i++ )); do
+    provider="${_chain[$i]}"
+
+    # Validate before executing. A missing dependency (exit 127) is TRANSIENT
+    # and advances the chain; a configuration error (exit 1) aborts.
+    validate_provider "$provider"
+    local validate_exit=$?
+    if [[ $validate_exit -ne 0 ]]; then
+      if [[ $validate_exit -eq 127 ]]; then
+        echo "↻ Provider '$provider' CLI not found, trying next..." >&2
+        continue
+      fi
+      echo "↻ Provider '$provider' validation failed (CONFIG), aborting." >&2
+      return 1
+    fi
+
+    # Execute with timeout
+    last_output=$(execute_provider_with_timeout "$provider" "$prompt" "$timeout")
+    last_exit=$?
+
+    # Success → return immediately
+    if [[ $last_exit -eq 0 ]]; then
+      echo "$last_output"
+      return 0
+    fi
+
+    # Classify the failure
+    local error_class
+    error_class=$(classify_provider_error "$last_exit" "$last_output")
+
+    if [[ "$error_class" == "CONFIG" ]]; then
+      echo "↻ Provider '$provider' config error, aborting." >&2
+      echo "$last_output"
+      return 1
+    fi
+
+    # TRANSIENT → log and try next
+    local next_provider=""
+    if [[ $(( i + 1 )) -lt $chain_len ]]; then
+      next_provider="${_chain[$(( i + 1 ))]}"
+    fi
+    echo "↻ Provider '$provider' transient (exit $last_exit), trying '${next_provider:-none}'..." >&2
+  done
+
+  # All providers exhausted
+  echo "$last_output"
+  return "${last_exit:-1}"
 }
 
 # ============================================================================

@@ -669,4 +669,359 @@ EOF
       The output should eq "claude"
     End
   End
+
+  # ===========================================================================
+  # Phase 1: parse_provider_list (REQ-FC-001)
+  # ===========================================================================
+
+  Describe 'parse_provider_list()'
+    # parse_provider_list writes into an array passed by nameref; it does NOT
+    # print to stdout. Assert the resulting array, not The output.
+
+    It 'splits comma-separated list into ordered array'
+      parse_provider_list "claude,gemini,ollama:llama3" _chain
+      The value "${_chain[*]}" should eq "claude gemini ollama:llama3"
+      The value "${#_chain[@]}" should eq 3
+    End
+
+    It 'preserves per-provider :model suffix'
+      parse_provider_list "ollama:llama3" _chain
+      The value "${_chain[*]}" should eq "ollama:llama3"
+    End
+
+    It 'ignores empty segments and trims whitespace'
+      parse_provider_list "claude, ,gemini," _chain
+      The value "${_chain[*]}" should eq "claude gemini"
+    End
+
+    It 'handles single provider (no comma)'
+      parse_provider_list "claude" _chain
+      The value "${_chain[*]}" should eq "claude"
+    End
+
+    It 'handles trailing comma gracefully'
+      parse_provider_list "claude,gemini," _chain
+      The value "${_chain[*]}" should eq "claude gemini"
+    End
+
+    It 'handles leading comma gracefully'
+      parse_provider_list ",claude,gemini" _chain
+      The value "${_chain[*]}" should eq "claude gemini"
+    End
+  End
+
+  # ===========================================================================
+  # Phase 1: classify_provider_error (REQ-FC-002 / REQ-FC-003)
+  # ===========================================================================
+
+  Describe 'classify_provider_error()'
+    # --- TRANSIENT cases (REQ-FC-002) ---
+
+    It 'classifies exit 124 (timeout) as TRANSIENT'
+      When call classify_provider_error 124 ""
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies exit 126 (command invoked not executable) as TRANSIENT'
+      When call classify_provider_error 126 ""
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies exit 127 (command not found) as TRANSIENT'
+      When call classify_provider_error 127 ""
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies HTTP 429 (rate limit) as TRANSIENT'
+      When call classify_provider_error 1 "HTTP 429 Too Many Requests"
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies HTTP 500 as TRANSIENT'
+      When call classify_provider_error 1 "HTTP 500 Internal Server Error"
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies HTTP 502 as TRANSIENT'
+      When call classify_provider_error 1 "HTTP 502 Bad Gateway"
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies HTTP 503 as TRANSIENT'
+      When call classify_provider_error 1 "HTTP 503 Service Unavailable"
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies connection reset as TRANSIENT'
+      When call classify_provider_error 1 "Connection reset by peer"
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies connection refused as TRANSIENT'
+      When call classify_provider_error 1 "Connection refused"
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies timeout in output as TRANSIENT'
+      When call classify_provider_error 1 "Request timed out"
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies rate limit text as TRANSIENT'
+      When call classify_provider_error 1 "rate limit exceeded"
+      The output should eq "TRANSIENT"
+    End
+
+    # --- CONFIG cases (REQ-FC-003) ---
+
+    It 'classifies missing API key (empty env) as CONFIG'
+      When call classify_provider_error 1 "API key not set"
+      The output should eq "CONFIG"
+    End
+
+    It 'classifies MINIMAX_API_KEY as CONFIG'
+      When call classify_provider_error 1 "MINIMAX_API_KEY not set"
+      The output should eq "CONFIG"
+    End
+
+    It 'classifies HTTP 401 as CONFIG'
+      When call classify_provider_error 1 "HTTP 401 Unauthorized"
+      The output should eq "CONFIG"
+    End
+
+    It 'classifies HTTP 403 as CONFIG'
+      When call classify_provider_error 1 "HTTP 403 Forbidden"
+      The output should eq "CONFIG"
+    End
+
+    It 'classifies invalid model as CONFIG'
+      When call classify_provider_error 1 "Invalid model name"
+      The output should eq "CONFIG"
+    End
+
+    It 'classifies not authenticated as CONFIG'
+      When call classify_provider_error 1 "not authenticated"
+      The output should eq "CONFIG"
+    End
+
+    It 'classifies unknown provider as CONFIG'
+      When call classify_provider_error 1 "Unknown provider"
+      The output should eq "CONFIG"
+    End
+
+    It 'classifies requires a model as CONFIG'
+      When call classify_provider_error 1 "requires a model"
+      The output should eq "CONFIG"
+    End
+
+    # --- Precedence: CONFIG wins if both match ---
+
+    It 'CONFIG pattern wins over TRANSIENT when both match'
+      When call classify_provider_error 1 "HTTP 401 Unauthorized and rate limit exceeded"
+      The output should eq "CONFIG"
+    End
+
+    # --- Unknown -> TRANSIENT ---
+
+    It 'classifies unknown errors as TRANSIENT'
+      When call classify_provider_error 1 "something completely unexpected"
+      The output should eq "TRANSIENT"
+    End
+
+    It 'classifies zero exit with unknown output as TRANSIENT'
+      When call classify_provider_error 0 "success but we check output"
+      The output should eq "TRANSIENT"
+    End
+  End
+
+  # ===========================================================================
+  # Phase 2: execute_with_fallback (REQ-FC-004 / REQ-FC-005 / REQ-PD-001)
+  # ===========================================================================
+
+  Describe 'execute_with_fallback()'
+    # ShellSpec runs `When call` and every $(...) substitution in a subshell,
+    # so variable-based counters never survive. Mocks record calls on stderr
+    # (which IS captured) and decide behavior by provider name instead.
+
+    validate_provider() {
+      echo "mock-validate: $1" >&2
+      return 0
+    }
+
+    # Default success mock; individual It blocks override with their own.
+    execute_provider_with_timeout() {
+      echo "mock-execute: $1" >&2
+      echo "STATUS: PASSED"
+      return 0
+    }
+
+    classify_provider_error() {
+      echo "TRANSIENT"
+    }
+
+    It 'stops on first success'
+      declare -a GGA_CHAIN=(claude gemini ollama:llama3)
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The output should eq "STATUS: PASSED"
+      The status should be success
+      The stderr should include "mock-execute: claude"
+      The stderr should not include "mock-execute: gemini"
+      The stderr should not include "mock-execute: ollama:llama3"
+    End
+
+    It 'advances on TRANSIENT failure'
+      declare -a GGA_CHAIN=(claude gemini)
+      execute_provider_with_timeout() {
+        echo "mock-execute: $1" >&2
+        case "$1" in
+          claude) echo "timeout error"; return 124 ;;
+          gemini) echo "STATUS: PASSED from gemini"; return 0 ;;
+        esac
+      }
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The output should eq "STATUS: PASSED from gemini"
+      The status should be success
+      The stderr should include "mock-execute: claude"
+      The stderr should include "mock-execute: gemini"
+      The stderr should include "trying"
+    End
+
+    It 'returns failure when all providers TRANSIENT-fail'
+      declare -a GGA_CHAIN=(claude gemini)
+      execute_provider_with_timeout() {
+        echo "mock-execute: $1" >&2
+        echo "error from $1"
+        return 124
+      }
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The status should be failure
+      The output should include "error from gemini"
+      The stderr should include "mock-execute: claude"
+      The stderr should include "mock-execute: gemini"
+      The stderr should include "trying 'none'"
+    End
+
+    It 'hard-aborts on CONFIG error without trying next'
+      declare -a GGA_CHAIN=(claude gemini)
+      classify_provider_error() {
+        echo "CONFIG"
+      }
+      execute_provider_with_timeout() {
+        echo "mock-execute: $1" >&2
+        echo "HTTP 403 Forbidden"
+        return 1
+      }
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The status should be failure
+      The output should include "HTTP 403 Forbidden"
+      The stderr should include "config error"
+      The stderr should not include "mock-execute: gemini"
+    End
+
+    It 'validates each provider before executing'
+      declare -a GGA_CHAIN=(claude gemini)
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The status should be success
+      The output should eq "STATUS: PASSED"
+      The stderr should include "mock-validate: claude"
+      The stderr should not include "mock-validate: gemini"
+    End
+
+    It 'advances when provider CLI is missing (validate returns 127)'
+      declare -a GGA_CHAIN=(claude gemini)
+      validate_provider() {
+        echo "mock-validate: $1" >&2
+        case "$1" in
+          claude) return 127 ;;
+          gemini) return 0 ;;
+        esac
+      }
+      execute_provider_with_timeout() {
+        echo "mock-execute: $1" >&2
+        echo "STATUS: PASSED from gemini"
+        return 0
+      }
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The output should eq "STATUS: PASSED from gemini"
+      The status should be success
+      The stderr should include "mock-validate: claude"
+      The stderr should include "CLI not found"
+      The stderr should include "mock-execute: gemini"
+      The stderr should not include "mock-execute: claude"
+    End
+
+    It 'aborts on validation CONFIG failure without executing or advancing'
+      declare -a GGA_CHAIN=(claude gemini)
+      validate_provider() {
+        echo "mock-validate: $1" >&2
+        return 1
+      }
+      execute_provider_with_timeout() {
+        echo "mock-execute: $1" >&2
+        echo "STATUS: PASSED"
+        return 0
+      }
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The status should be failure
+      The stderr should include "mock-validate: claude"
+      The stderr should include "CONFIG"
+      The stderr should not include "mock-execute: claude"
+      The stderr should not include "mock-execute: gemini"
+    End
+
+    It 'handles single-provider chain (passthrough)'
+      declare -a GGA_CHAIN=(claude)
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The output should eq "STATUS: PASSED"
+      The status should be success
+      The stderr should include "mock-execute: claude"
+    End
+
+    It 'logs transient fallback message to stderr'
+      declare -a GGA_CHAIN=(claude gemini)
+      execute_provider_with_timeout() {
+        echo "mock-execute: $1" >&2
+        case "$1" in
+          claude) echo "timeout"; return 124 ;;
+          gemini) echo "STATUS: PASSED"; return 0 ;;
+        esac
+      }
+
+      When call execute_with_fallback "prompt" 300 GGA_CHAIN
+      The status should be success
+      The output should eq "STATUS: PASSED"
+      The stderr should include "claude"
+      The stderr should include "trying"
+    End
+  End
+
+  # ===========================================================================
+  # Phase 2 Task 2.3: ollama without model CONFIG hard-abort
+  # ===========================================================================
+
+  Describe 'validate_provider() - ollama without model'
+    It 'fails for ollama without model (CONFIG hard-abort)'
+      # validate_provider checks ollama CLI first, then model
+      # Without ollama CLI, it returns error for CLI not found
+      # With ollama mocked, it should fail on missing model
+      command() {
+        case "$2" in
+          ollama) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      When call validate_provider "ollama"
+      The status should be failure
+      The output should include "requires a model"
+    End
+  End
 End

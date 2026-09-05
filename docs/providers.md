@@ -28,6 +28,49 @@ Use whichever AI CLI you have installed:
 
 ---
 
+## Fallback Chain
+
+GGA supports a comma-separated fallback chain for providers. When the first provider fails with a transient error (timeout, rate-limit, network issue), GGA automatically tries the next provider in the list.
+
+```bash
+# Try Claude first, fall back to Gemini, then Ollama
+PROVIDER="claude,gemini,ollama:llama3"
+
+# Each entry can include per-provider :model syntax
+PROVIDER="claude,gemini,codex,ollama:codellama"
+```
+
+### How It Works
+
+1. **Sequential execution**: Providers are tried in order — never in parallel
+2. **Transient failure**: Timeout (exit 124), rate-limit (HTTP 429), server errors (HTTP 500/502/503), connection issues, or CLI not found (exit 126/127) → advance to next provider
+3. **Config error**: Missing API key, authentication failure (HTTP 401/403), invalid model → abort immediately, do NOT fall back
+4. **Success**: First provider to return exit 0 wins — remaining providers are skipped
+
+### Error Classification
+
+| Error Type | Examples | Behavior |
+|------------|----------|----------|
+| **TRANSIENT** | Timeout, HTTP 429/500/502/503, connection reset, exit 124/126/127 | Advance to next provider |
+| **CONFIG** | Missing API key, HTTP 401/403, invalid model, unknown provider | Abort immediately |
+
+### Examples
+
+```bash
+# Reliable CI/CD pipeline: try cloud, fall back to local
+PROVIDER="claude,gemini,ollama:llama3"
+
+# Cost optimization: try cheap first, escalate
+PROVIDER="ollama:llama3,claude"
+
+# Single provider (unchanged behavior, zero regression)
+PROVIDER="claude"
+```
+
+> **Note**: Fallback adds latency on failure — each transient attempt consumes the full timeout window. This is a deliberate tradeoff: reliability > speed for unattended CI/CD pipelines.
+
+---
+
 ## Provider Examples
 
 ```bash
@@ -99,6 +142,12 @@ PROVIDER="minimax:MiniMax-M3"
 # Antigravity / VS Code users: use any provider CLI from your integrated terminal
 # Antigravity comes with Gemini built-in — just set:
 PROVIDER="gemini"
+
+# Fallback chain: try Claude, fall back to Gemini, then Ollama
+PROVIDER="claude,gemini,ollama:llama3"
+
+# Fallback with per-provider models
+PROVIDER="claude,gemini,codex,ollama:codellama"
 ```
 
 ---

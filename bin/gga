@@ -210,6 +210,7 @@ print_help() {
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
   echo "                     Values: claude, gemini, codex, opencode, cursor[:model], kilo[:model], kiro, ollama:<model>, lmstudio[:model], github:<model>, minimax[:model]"
+  echo "                     Comma-separated fallback: PROVIDER=\"claude,gemini,ollama:llama3\""
   echo "  FILE_PATTERNS      File patterns to review (default: *)"
   echo "                     Example: *.ts,*.tsx,*.js,*.jsx"
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
@@ -794,9 +795,22 @@ cmd_run() {
     exit 1
   fi
 
-  # Validate provider is available
-  if ! validate_provider "$PROVIDER"; then
-    exit 1
+  # Validate provider(s) — comma triggers fallback chain
+  if [[ "$PROVIDER" == *","* ]]; then
+    declare -a GGA_CHAIN=()
+    parse_provider_list "$PROVIDER" GGA_CHAIN
+    if [[ ${#GGA_CHAIN[@]} -eq 0 ]]; then
+      log_error "No valid providers in list: $PROVIDER"
+      exit 1
+    fi
+    # Validate first provider upfront (fail fast on obvious misconfigurations)
+    if ! validate_provider "${GGA_CHAIN[0]}"; then
+      exit 1
+    fi
+  else
+    if ! validate_provider "$PROVIDER"; then
+      exit 1
+    fi
   fi
 
   # Check rules file exists
@@ -970,13 +984,21 @@ cmd_run() {
   fi
 
   # Execute review with timeout and progress feedback
-  log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
+  if [[ "$PROVIDER" == *","* ]]; then
+    log_info "Sending to provider chain [${GGA_CHAIN[*]:-}] for review (timeout: ${TIMEOUT}s)..."
+  else
+    log_info "Sending to $PROVIDER for review (timeout: ${TIMEOUT}s)..."
+  fi
   echo ""
 
   # Temporarily disable set -e to capture exit status properly
   # (bash 3.2 on macOS can exit on non-zero in command substitution)
   set +e
-  RESULT=$(execute_provider_with_timeout "$PROVIDER" "$PROMPT" "$TIMEOUT")
+  if [[ "$PROVIDER" == *","* ]]; then
+    RESULT=$(execute_with_fallback "$PROMPT" "$TIMEOUT" GGA_CHAIN)
+  else
+    RESULT=$(execute_provider_with_timeout "$PROVIDER" "$PROMPT" "$TIMEOUT")
+  fi
   EXEC_STATUS=$?
   set -e
 
