@@ -75,7 +75,7 @@ REJECT if:
 - Missing error handling
 ```
 
-**Why references work:** Claude, Gemini, and Codex have built-in tools to read files. When they see a reference like "`ui/AGENTS.md`", they can go read it if they need more context. This keeps your main file focused while allowing deep dives when needed.
+**Why references work:** Claude, Antigravity, and Codex have built-in tools to read files. When they see a reference like "`ui/AGENTS.md`", they can go read it if they need more context. This keeps your main file focused while allowing deep dives when needed.
 
 > ⚠️ **Note for Ollama users**: Ollama is a pure LLM without file-reading tools. If you use Ollama and need multiple rules files, you'll need to manually consolidate them into one file.
 
@@ -261,4 +261,4 @@ PREFER:
 
 **The AI sees the index, checks which files are in the diff, and reads only the relevant skill files.** A PR that only touches `.py` files won't load React or TypeScript rules — the AI gets a clean, focused prompt with just what it needs.
 
-> ⚠️ **Note**: This works best with providers that have file-reading capabilities (Claude, Gemini, Codex). For Ollama or other pure LLMs without tool use, you'll need to keep rules in a single file.
+> ⚠️ **Note**: This works best with providers that have file-reading capabilities (Claude, Antigravity, Codex). For Ollama or other pure LLMs without tool use, you'll need to keep rules in a single file.

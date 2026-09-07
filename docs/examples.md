@@ -30,7 +30,7 @@ git commit -m "feat: add feature"
     ├──▶ 6. Build prompt: rules + file contents
     │
     ├──▶ 7. Send to AI provider (with timeout + progress)
-    │       (claude/gemini/codex/opencode/ollama/lmstudio/github/...)
+    │       (claude/agy/codex/opencode/ollama/lmstudio/github/...)
     │
     └──▶ 8. Parse response
             │
@@ -222,7 +222,7 @@ RULES_FILE=".coding-standards.md"
 
 ```bash
 # .gga
-PROVIDER="gemini"
+PROVIDER="agy"
 FILE_PATTERNS="*.go"
 EXCLUDE_PATTERNS="*_test.go,mock_*.go,*_mock.go"
 ```

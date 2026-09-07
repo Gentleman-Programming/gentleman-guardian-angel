@@ -23,13 +23,33 @@ fi
 cat
 FAKE
 
-    cat > "$TEST_BIN_DIR/gemini" <<'FAKE'
+    cat > "$TEST_BIN_DIR/agy" <<'FAKE'
 #!/usr/bin/env bash
-if [[ "$1" != "-p" ]]; then
-  echo "unexpected gemini args: $*" >&2
+# Emulate: agy [--model <model>] --print=@<prompt-file>
+model=""
+prompt_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model)
+      model="$2"
+      shift 2
+      ;;
+    --print=@*)
+      prompt_file="${1#--print=@}"
+      shift
+      ;;
+    *)
+      echo "unexpected agy args: $*" >&2
+      exit 64
+      ;;
+  esac
+done
+if [[ -z "$prompt_file" || ! -f "$prompt_file" ]]; then
+  echo "agy: missing prompt file" >&2
   exit 64
 fi
-cat
+[[ -n "$model" ]] && echo "MODEL:$model"
+cat "$prompt_file"
 FAKE
 
     cat > "$TEST_BIN_DIR/codex" <<'FAKE'
@@ -127,7 +147,7 @@ echo "KIRO_INSTRUCTION:$1"
 cat
 FAKE
 
-    chmod +x "$TEST_BIN_DIR/claude" "$TEST_BIN_DIR/gemini" "$TEST_BIN_DIR/codex" "$TEST_BIN_DIR/opencode" "$TEST_BIN_DIR/cursor-agent" "$TEST_BIN_DIR/kilo" "$TEST_BIN_DIR/kiro-cli"
+    chmod +x "$TEST_BIN_DIR/claude" "$TEST_BIN_DIR/agy" "$TEST_BIN_DIR/codex" "$TEST_BIN_DIR/opencode" "$TEST_BIN_DIR/cursor-agent" "$TEST_BIN_DIR/kilo" "$TEST_BIN_DIR/kiro-cli"
   }
   BeforeEach 'setup'
 
@@ -150,12 +170,21 @@ FAKE
     The stderr should include "Waiting for Claude"
   End
 
-  It 'passes the full prompt to gemini via stdin'
-    When call execute_provider_with_timeout "gemini" $'line 1\nline 2' 5
+  It 'passes the full prompt to agy via a prompt file'
+    When call execute_provider_with_timeout "agy" $'line 1\nline 2' 5
     The status should be success
     The output should include "line 1"
     The output should include "line 2"
-    The stderr should include "Waiting for Gemini"
+    The stderr should include "Waiting for Antigravity"
+  End
+
+  It 'passes the model and full prompt to agy when a model is set'
+    When call execute_provider_with_timeout "agy:gemini-3.1-pro-high" $'line 1\nline 2' 5
+    The status should be success
+    The output should include "MODEL:gemini-3.1-pro-high"
+    The output should include "line 1"
+    The output should include "line 2"
+    The stderr should include "Waiting for Antigravity"
   End
 
   It 'passes the full prompt to codex via stdin'

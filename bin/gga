@@ -4,7 +4,7 @@
 # Gentleman Guardian Angel - Provider-agnostic code review using AI
 # ============================================================================
 # A standalone CLI tool that validates staged files against your project's
-# coding standards using any AI provider (Claude, Gemini, Codex, Ollama, etc.)
+# coding standards using any AI provider (Claude, Antigravity, Codex, Ollama, etc.)
 # ============================================================================
 
 set -e
@@ -209,7 +209,7 @@ print_help() {
   echo ""
   echo -e "${BOLD}CONFIG OPTIONS:${NC}"
   echo "  PROVIDER           AI provider to use (required)"
-  echo "                     Values: claude, gemini, codex, opencode, cursor[:model], kilo[:model], kiro, ollama:<model>, lmstudio[:model], github:<model>, minimax[:model]"
+  echo "                     Values: claude, agy[:model], codex, opencode, cursor[:model], kilo[:model], kiro, ollama:<model>, lmstudio[:model], github:<model>, minimax[:model]"
   echo "  FILE_PATTERNS      File patterns to review (default: *)"
   echo "                     Example: *.ts,*.tsx,*.js,*.jsx"
   echo "  EXCLUDE_PATTERNS   Patterns to exclude from review"
@@ -403,10 +403,11 @@ cmd_init() {
 # https://github.com/your-org/gga
 
 # AI Provider (required)
-# Options: claude, gemini, codex, opencode, cursor[:model], kilo[:model], kiro, ollama:<model>, lmstudio[:model], github:<model>, minimax[:model]
+# Options: claude, agy[:model], codex, opencode, cursor[:model], kilo[:model], kiro, ollama:<model>, lmstudio[:model], github:<model>, minimax[:model]
 # Examples:
 #   PROVIDER="claude"
-#   PROVIDER="gemini"
+#   PROVIDER="agy"
+#   PROVIDER="agy:gemini-3.1-pro-high"
 #   PROVIDER="codex"
 #   PROVIDER="opencode"
 #   PROVIDER="opencode:anthropic/claude-opus-4-5"

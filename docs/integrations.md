@@ -196,7 +196,7 @@ gga init
 gga install
 
 # 4. Make sure your AI provider CLI is available in PATH
-which claude   # or gemini, codex, opencode
+which claude   # or agy, codex, opencode
 ```
 
 That's it. When you commit via the Source Control panel (`Cmd+Enter` / `Ctrl+Enter`) or via `git commit` in the terminal, GGA's pre-commit hook fires and reviews your staged files.
@@ -205,7 +205,7 @@ That's it. When you commit via the Source Control panel (`Cmd+Enter` / `Ctrl+Ent
 
 - **Output visibility**: Hook output appears in the "Git" output channel. Open it via View → Output → select "Git" from the dropdown
 - **Bypass when needed**: Use `--no-verify` from the terminal: `git commit --no-verify -m "wip"`
-- **Antigravity users**: Antigravity includes Gemini built-in. Set `PROVIDER="gemini"` in your `.gga` config and ensure the `gemini` CLI is in your PATH. GGA works through git hooks — no IDE-specific configuration needed.
+- **Antigravity users**: Antigravity ships the `agy` CLI. Set `PROVIDER="agy"` in your `.gga` config and ensure `agy` is in your PATH (`agy install`). GGA works through git hooks — no IDE-specific configuration needed.
 - **Windows + VS Code**: VS Code may launch Git from a different shell profile than your terminal. Confirm `gga` is resolvable from inside VS Code with `where gga` (PowerShell/CMD) or `which gga` (Git Bash).
 
 ---

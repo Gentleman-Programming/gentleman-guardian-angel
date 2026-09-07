@@ -333,9 +333,14 @@ All good!"
       The output should include "Claude"
     End
 
-    It 'returns info for gemini'
-      When call get_provider_info "gemini"
-      The output should include "Gemini"
+    It 'returns info for agy'
+      When call get_provider_info "agy"
+      The output should include "Antigravity"
+    End
+
+    It 'returns info for agy with model'
+      When call get_provider_info "agy:gemini-3.1-pro-high"
+      The output should include "gemini-3.1-pro-high"
     End
 
     It 'returns info for codex'

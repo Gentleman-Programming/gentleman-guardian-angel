@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Provider-agnostic code review using AI</strong><br>
-  Use Claude, Gemini, Codex, OpenCode, Cursor Agent, Kilo, Kiro, Ollama, LM Studio, GitHub Models, MiniMax, or any AI to enforce your coding standards.<br>
+  Use Claude, Antigravity, Codex, OpenCode, Cursor Agent, Kilo, Kiro, Ollama, LM Studio, GitHub Models, MiniMax, or any AI to enforce your coding standards.<br>
   Pure Bash core. Works everywhere.
 </p>
 
@@ -45,7 +45,7 @@ You have coding standards. Your team ignores them. Code reviews catch issues too
 └─────────────────┘     └──────────────┘     └─────────────────┘
 ```
 
-- 🔌 **Provider agnostic** — Claude, Gemini, Codex, OpenCode, Cursor Agent, Kilo, Kiro, Ollama, LM Studio, GitHub Models, MiniMax
+- 🔌 **Provider agnostic** — Claude, Antigravity, Codex, OpenCode, Cursor Agent, Kilo, Kiro, Ollama, LM Studio, GitHub Models, MiniMax
 - 📦 **Pure Bash core** — no runtime framework; individual providers may require their own CLI or API tooling
 - 🪝 **Git native** — Standard pre-commit hook
 - ⚡ **Smart caching** — Skip unchanged files
@@ -119,7 +119,7 @@ gga install             # Install git hook
 | Provider | Config Value | Installation |
 |----------|-------------|-------------|
 | **Claude** | `claude` | [claude.ai/code](https://claude.ai/code) |
-| **Gemini** | `gemini` | [gemini-cli](https://github.com/google-gemini/gemini-cli) |
+| **Antigravity** | `agy[:model]` | [antigravity.google](https://antigravity.google/docs/cli/reference) |
 | **Codex** | `codex` | `npm i -g @openai/codex` |
 | **OpenCode** | `opencode` | [opencode.ai](https://opencode.ai) |
 | **Cursor Agent** | `cursor[:model]` | [cursor.com](https://cursor.com) |
