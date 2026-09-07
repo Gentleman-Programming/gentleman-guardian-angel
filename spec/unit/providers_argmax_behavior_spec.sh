@@ -25,11 +25,16 @@ FAKE
 
     cat > "$TEST_BIN_DIR/agy" <<'FAKE'
 #!/usr/bin/env bash
-# Emulate: agy [--model <model>] --print=@<prompt-file>
+# Emulate: agy --dangerously-skip-permissions [--model <model>] --print=@<prompt-file>
 model=""
 prompt_file=""
+skip_permissions=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --dangerously-skip-permissions)
+      skip_permissions="1"
+      shift
+      ;;
     --model)
       model="$2"
       shift 2
@@ -44,6 +49,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+if [[ -z "$skip_permissions" ]]; then
+  echo "agy: expected --dangerously-skip-permissions" >&2
+  exit 64
+fi
 if [[ -z "$prompt_file" || ! -f "$prompt_file" ]]; then
   echo "agy: missing prompt file" >&2
   exit 64

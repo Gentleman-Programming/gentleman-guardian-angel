@@ -12,7 +12,7 @@ Full version history for Gentleman Guardian Angel.
   - Google retired the standalone Gemini CLI and folded it into Antigravity, whose CLI is `agy`
   - `PROVIDER="gemini"` is no longer recognized — update `.gga` configs to `PROVIDER="agy"`
   - `PROVIDER="agy:<model>"` selects a model inline (e.g. `agy:gemini-3.1-pro-high`, `agy:claude-sonnet-4-6`); `agy models` lists available models
-  - The review prompt is handed off via `agy --print=@<file>` so large prompts never hit ARG_MAX
+  - Runs `agy --dangerously-skip-permissions --print=@<file>`: the prompt is handed off via a temp file so large prompts never hit ARG_MAX, and permissions are auto-approved because `agy` otherwise stalls on its headless permission prompt and returns an empty (ambiguous) response
 - ✅ **docs(providers)**: Updated provider tables, examples, and integration notes for Antigravity
 - ✅ **test(providers)**: Updated ARG_MAX unit/behavior specs and provider-info specs for `agy`
 

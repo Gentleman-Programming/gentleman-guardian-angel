@@ -15,7 +15,7 @@ Use whichever AI CLI you have installed:
 | Provider          | Config Value       | CLI Command Used                  | Installation                                                                       |
 | ----------------- | ------------------ | --------------------------------- | ---------------------------------------------------------------------------------- |
 | **Claude**        | `claude`           | `echo "prompt" \| claude --print` | [claude.ai/code](https://claude.ai/code)                                           |
-| **Antigravity**   | `agy[:model]`      | `agy --print=@prompt.txt`         | [antigravity.google/docs/cli](https://antigravity.google/docs/cli/reference) |
+| **Antigravity**   | `agy[:model]`      | `agy --dangerously-skip-permissions --print=@prompt.txt` | [antigravity.google/docs/cli](https://antigravity.google/docs/cli/reference) |
 | **Codex**         | `codex`            | `codex exec "prompt"`             | `npm i -g @openai/codex`                                                           |
 | **OpenCode**      | `opencode`         | `echo "prompt" \| opencode run`   | [opencode.ai](https://opencode.ai)                                                 |
 | **Cursor Agent**  | `cursor[:model]`   | `echo "prompt" \| cursor-agent -p --output-format text` | [cursor.com](https://cursor.com)                                      |
@@ -130,8 +130,10 @@ Supports optional inline model selection — `agy:<model>` (for example
 what your account can use. Without a suffix, Antigravity's configured default
 model is used.
 
-GGA passes the review prompt through a temp file (`agy --print=@<file>`) so large
-prompts never hit ARG_MAX.
+GGA runs `agy --dangerously-skip-permissions --print=@<file>`: the prompt goes
+through a temp file so large reviews never hit ARG_MAX, and permissions are
+auto-approved because `agy` otherwise stalls on its headless permission prompt
+and returns nothing. The review prompt is self-contained and read-only.
 
 ```bash
 # Install

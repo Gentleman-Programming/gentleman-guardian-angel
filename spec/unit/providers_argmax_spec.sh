@@ -62,14 +62,14 @@ Describe 'providers.sh ARG_MAX handling'
       When call execute_provider_with_timeout "agy" "test prompt" 300
       The output should include "TIMEOUT:300:Antigravity"
       The output should include "bash -c"
-      The output should include "exec agy --print="
+      The output should include "exec agy --dangerously-skip-permissions --print="
     End
 
     It 'writes prompt to temp file for agy with model'
       When call execute_provider_with_timeout "agy:gemini-3.1-pro-high" "test prompt" 300
       The output should include "TIMEOUT:300:Antigravity"
       The output should include "bash -c"
-      The output should include "exec agy --model"
+      The output should include "exec agy --dangerously-skip-permissions --model"
     End
 
     It 'writes prompt to temp file for kilo'

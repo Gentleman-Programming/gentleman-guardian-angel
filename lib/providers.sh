@@ -335,6 +335,12 @@ execute_agy() {
   # Antigravity CLI reads the prompt from a file when --print=@<path> is used.
   # Route the prompt through a temp file so large review prompts never travel
   # through argv (ARG_MAX) and no shell quoting of the prompt is needed.
+  #
+  # --dangerously-skip-permissions: agy auto-denies any tool that needs a
+  # permission prompt in headless mode and then emits nothing, which GGA reads
+  # as an ambiguous response. The review prompt is self-contained and read-only,
+  # so auto-approving keeps agy from stalling (matches the other CLI providers,
+  # which all run non-interactively in auto-approve mode).
   local prompt_file
   if ! prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_agy_prompt.XXXXXX"); then
     echo "Error: Failed to create temporary Antigravity prompt file" >&2
@@ -348,10 +354,10 @@ execute_agy() {
 
   local status
   if [[ -n "$model" ]]; then
-    agy --model "$model" --print="@${prompt_file}" 2>&1
+    agy --dangerously-skip-permissions --model "$model" --print="@${prompt_file}" 2>&1
     status=$?
   else
-    agy --print="@${prompt_file}" 2>&1
+    agy --dangerously-skip-permissions --print="@${prompt_file}" 2>&1
     status=$?
   fi
 
@@ -1238,6 +1244,8 @@ execute_provider_with_timeout() {
           # Antigravity CLI reads the prompt from a file via --print=@<path>,
           # keeping the large review prompt out of argv. Model selection is
           # optional (agy:<model>); agy validates the model name itself.
+          # --dangerously-skip-permissions stops agy from stalling on its
+          # headless permission prompt (see execute_agy for the rationale).
           local model="${provider#*:}"
           if [[ "$model" == "$provider" ]]; then
             model=""
@@ -1245,11 +1253,11 @@ execute_provider_with_timeout() {
           if [[ -n "$model" ]]; then
             # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "Antigravity" \
-              bash -c 'exec agy --model "$2" --print="@$1"' _ "$prompt_file" "$model"
+              bash -c 'exec agy --dangerously-skip-permissions --model "$2" --print="@$1"' _ "$prompt_file" "$model"
           else
             # shellcheck disable=SC2016
             execute_with_timeout "$timeout" "Antigravity" \
-              bash -c 'exec agy --print="@$1"' _ "$prompt_file"
+              bash -c 'exec agy --dangerously-skip-permissions --print="@$1"' _ "$prompt_file"
           fi
           result=$?
           ;;
