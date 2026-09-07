@@ -15,7 +15,7 @@ Use whichever AI CLI you have installed:
 | Provider          | Config Value       | CLI Command Used                  | Installation                                                                       |
 | ----------------- | ------------------ | --------------------------------- | ---------------------------------------------------------------------------------- |
 | **Claude**        | `claude`           | `echo "prompt" \| claude --print` | [claude.ai/code](https://claude.ai/code)                                           |
-| **Gemini**        | `gemini`           | `echo "prompt" \| gemini`         | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
+| **Antigravity**   | `agy[:model]`      | `agy --dangerously-skip-permissions --print=@prompt.txt` | [antigravity.google/docs/cli](https://antigravity.google/docs/cli/reference) |
 | **Codex**         | `codex`            | `codex exec "prompt"`             | `npm i -g @openai/codex`                                                           |
 | **OpenCode**      | `opencode`         | `echo "prompt" \| opencode run`   | [opencode.ai](https://opencode.ai)                                                 |
 | **Cursor Agent**  | `cursor[:model]`   | `echo "prompt" \| cursor-agent -p --output-format text` | [cursor.com](https://cursor.com)                                      |
@@ -34,8 +34,11 @@ Use whichever AI CLI you have installed:
 # Use Claude (recommended - most reliable)
 PROVIDER="claude"
 
-# Use Google Gemini
-PROVIDER="gemini"
+# Use Antigravity (Google, Gemini-powered) with the default model
+PROVIDER="agy"
+
+# Use Antigravity with a specific model
+PROVIDER="agy:gemini-3.1-pro-high"
 
 # Use OpenAI Codex
 PROVIDER="codex"
@@ -97,8 +100,8 @@ PROVIDER="minimax"
 PROVIDER="minimax:MiniMax-M3"
 
 # Antigravity / VS Code users: use any provider CLI from your integrated terminal
-# Antigravity comes with Gemini built-in — just set:
-PROVIDER="gemini"
+# The Antigravity CLI ships as `agy` — just set:
+PROVIDER="agy"
 ```
 
 ---
@@ -117,16 +120,29 @@ Most reliable at following instructions. Recommended for strict mode and CI/CD p
 echo "Say hello" | claude --print
 ```
 
-### Gemini
+### Antigravity
 
-Google's Gemini CLI. Built into Antigravity IDE.
+Google's Antigravity CLI (`agy`), Gemini-powered. Replaces the retired standalone
+Gemini CLI. Ships with the Antigravity IDE and can also be installed on its own.
+
+Supports optional inline model selection — `agy:<model>` (for example
+`agy:gemini-3.1-pro-high` or `agy:claude-sonnet-4-6`). Run `agy models` to list
+what your account can use. Without a suffix, Antigravity's configured default
+model is used.
+
+GGA runs `agy --dangerously-skip-permissions --print=@<file>`: the prompt goes
+through a temp file so large reviews never hit ARG_MAX, and permissions are
+auto-approved because `agy` otherwise stalls on its headless permission prompt
+and returns nothing. The review prompt is self-contained and read-only.
 
 ```bash
 # Install
-# See https://github.com/google-gemini/gemini-cli
+# See https://antigravity.google/docs/cli/reference
+# Then wire up your PATH:
+agy install
 
 # Test it works
-echo "Say hello" | gemini
+agy --print="Say hello"
 ```
 
 ### Cursor Agent

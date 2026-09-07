@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 
 # Tests for ARG_MAX fix - execute_provider_with_timeout should handle large prompts
-# via temp files for CLI providers (claude, gemini, codex, opencode, cursor, kilo, kiro).
+# via temp files for CLI providers (claude, agy, codex, opencode, cursor, kilo, kiro).
 # Related issues: #77 (macOS), #87 (Windows), #58, #85
 
 Describe 'providers.sh ARG_MAX handling'
@@ -24,7 +24,7 @@ Describe 'providers.sh ARG_MAX handling'
     claude() { cat; }
     codex() { cat; }
     opencode() { cat; }
-    gemini() { cat; }
+    agy() { cat; }
     kilo() { cat; }
     kiro-cli() { cat; }
 
@@ -58,11 +58,18 @@ Describe 'providers.sh ARG_MAX handling'
       The output should include "opencode run --model"
     End
 
-    It 'writes prompt to temp file for gemini'
-      When call execute_provider_with_timeout "gemini" "test prompt" 300
-      The output should include "TIMEOUT:300:Gemini"
+    It 'writes prompt to temp file for agy'
+      When call execute_provider_with_timeout "agy" "test prompt" 300
+      The output should include "TIMEOUT:300:Antigravity"
       The output should include "bash -c"
-      The output should include "exec gemini -p"
+      The output should include "exec agy --dangerously-skip-permissions --print="
+    End
+
+    It 'writes prompt to temp file for agy with model'
+      When call execute_provider_with_timeout "agy:gemini-3.1-pro-high" "test prompt" 300
+      The output should include "TIMEOUT:300:Antigravity"
+      The output should include "bash -c"
+      The output should include "exec agy --dangerously-skip-permissions --model"
     End
 
     It 'writes prompt to temp file for kilo'

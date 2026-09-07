@@ -5,7 +5,7 @@
 # ============================================================================
 # Handles execution for different AI providers:
 # - claude: Anthropic Claude Code CLI
-# - gemini: Google Gemini CLI
+# - agy: Antigravity CLI (Google, Gemini-powered; optional :model)
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
 # - cursor: Cursor Agent CLI (optional :model)
@@ -40,14 +40,15 @@ validate_provider() {
         return 1
       fi
       ;;
-    gemini)
-      if ! command -v gemini &> /dev/null; then
-        echo -e "${RED}❌ Gemini CLI not found${NC}"
+    agy)
+      if ! command -v agy &> /dev/null; then
+        echo -e "${RED}❌ Antigravity CLI (agy) not found${NC}"
         echo ""
-        echo "Install Gemini CLI:"
-        echo "  npm install -g @anthropic-ai/gemini-cli"
-        echo "  # or"
-        echo "  brew install gemini"
+        echo "Install the Antigravity CLI:"
+        echo "  https://antigravity.google/docs/cli/reference"
+        echo ""
+        echo "Then configure your PATH:"
+        echo "  agy install"
         echo ""
         return 1
       fi
@@ -224,7 +225,7 @@ validate_provider() {
       echo ""
       echo "Supported providers:"
       echo "  - claude"
-      echo "  - gemini"
+      echo "  - agy[:model]"
       echo "  - codex"
       echo "  - opencode"
       echo "  - cursor[:model]"
@@ -255,8 +256,12 @@ execute_provider() {
     claude)
       execute_claude "$prompt"
       ;;
-    gemini)
-      execute_gemini "$prompt"
+    agy)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_agy "$model" "$prompt"
       ;;
     codex)
       execute_codex "$prompt"
@@ -323,25 +328,41 @@ execute_claude() {
   return "${PIPESTATUS[1]}"
 }
 
-execute_gemini() {
-  local prompt="$1"
-  
-  if ! is_gemini_authenticated; then
-    echo -e "${RED}❌ Gemini CLI is not authenticated${NC}" >&2
-    echo ""
-    echo "Please log in to Gemini CLI first:"
-    echo "  gemini login"
-    echo ""
-    echo "Or visit: https://gemini.google.com"
+execute_agy() {
+  local model="$1"
+  local prompt="$2"
+
+  # Antigravity CLI reads the prompt from a file when --print=@<path> is used.
+  # Route the prompt through a temp file so large review prompts never travel
+  # through argv (ARG_MAX) and no shell quoting of the prompt is needed.
+  #
+  # --dangerously-skip-permissions: agy auto-denies any tool that needs a
+  # permission prompt in headless mode and then emits nothing, which GGA reads
+  # as an ambiguous response. The review prompt is self-contained and read-only,
+  # so auto-approving keeps agy from stalling (matches the other CLI providers,
+  # which all run non-interactively in auto-approve mode).
+  local prompt_file
+  if ! prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_agy_prompt.XXXXXX"); then
+    echo "Error: Failed to create temporary Antigravity prompt file" >&2
     return 1
   fi
-  
-  gemini -p "$prompt" 2>&1
-  return $?
-}
+  if ! printf '%s' "$prompt" > "$prompt_file"; then
+    echo "Error: Failed to write Antigravity prompt to temporary file" >&2
+    rm -f "$prompt_file"
+    return 1
+  fi
 
-is_gemini_authenticated() {
-  gemini whoami &>/dev/null
+  local status
+  if [[ -n "$model" ]]; then
+    agy --dangerously-skip-permissions --model "$model" --print="@${prompt_file}" 2>&1
+    status=$?
+  else
+    agy --dangerously-skip-permissions --print="@${prompt_file}" 2>&1
+    status=$?
+  fi
+
+  rm -f "$prompt_file"
+  return "$status"
 }
 
 execute_codex() {
@@ -942,8 +963,13 @@ get_provider_info() {
     claude)
       echo "Anthropic Claude Code CLI"
       ;;
-    gemini)
-      echo "Google Gemini CLI"
+    agy)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        echo "Antigravity CLI"
+      else
+        echo "Antigravity CLI (model: $model)"
+      fi
       ;;
     codex)
       echo "OpenAI Codex CLI"
@@ -1173,7 +1199,7 @@ execute_with_timeout() {
 # Execute provider with timeout and progress feedback
 # Usage: execute_provider_with_timeout <provider> <prompt> <timeout>
 #
-# For CLI providers (claude, gemini, codex, opencode, cursor, kilo, kiro), the prompt is written to a
+# For CLI providers (claude, agy, codex, opencode, cursor, kilo, kiro), the prompt is written to a
 # temp file and piped via stdin to avoid ARG_MAX limits on Windows (~8KB-32KB),
 # macOS (~256KB), and Linux (~128KB-2MB). Only the file path (short string) is
 # passed as an argument to execute_with_timeout, never the prompt content.
@@ -1185,7 +1211,7 @@ execute_provider_with_timeout() {
   local result=0
 
   case "$base_provider" in
-    claude|gemini|codex|opencode|cursor|kilo|kiro)
+    claude|agy|codex|opencode|cursor|kilo|kiro)
       # Write prompt to temp file ONCE to avoid ARG_MAX limits.
       # This is critical for large PRs that generate prompts > 128KB-256KB.
       # Only CLI providers are handled here. API-based providers keep their
@@ -1214,11 +1240,25 @@ execute_provider_with_timeout() {
             bash -c 'exec claude --print < "$1"' _ "$prompt_file"
           result=$?
           ;;
-        gemini)
-          # Gemini appends stdin to the non-interactive prompt value.
-          # shellcheck disable=SC2016
-          execute_with_timeout "$timeout" "Gemini" \
-            bash -c 'exec gemini -p "" < "$1"' _ "$prompt_file"
+        agy)
+          # Antigravity CLI reads the prompt from a file via --print=@<path>,
+          # keeping the large review prompt out of argv. Model selection is
+          # optional (agy:<model>); agy validates the model name itself.
+          # --dangerously-skip-permissions stops agy from stalling on its
+          # headless permission prompt (see execute_agy for the rationale).
+          local model="${provider#*:}"
+          if [[ "$model" == "$provider" ]]; then
+            model=""
+          fi
+          if [[ -n "$model" ]]; then
+            # shellcheck disable=SC2016
+            execute_with_timeout "$timeout" "Antigravity" \
+              bash -c 'exec agy --dangerously-skip-permissions --model "$2" --print="@$1"' _ "$prompt_file" "$model"
+          else
+            # shellcheck disable=SC2016
+            execute_with_timeout "$timeout" "Antigravity" \
+              bash -c 'exec agy --dangerously-skip-permissions --print="@$1"' _ "$prompt_file"
+          fi
           result=$?
           ;;
         codex)

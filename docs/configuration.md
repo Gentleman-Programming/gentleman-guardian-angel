@@ -12,7 +12,7 @@ Create this file in your project root:
 
 ```bash
 # AI Provider (required)
-# Options: claude, gemini, codex, opencode, ollama:<model>, lmstudio[:model], github:<model>
+# Options: claude, agy[:model], codex, opencode, ollama:<model>, lmstudio[:model], github:<model>
 PROVIDER="claude"
 
 # File patterns to review (comma-separated globs)
@@ -67,7 +67,7 @@ TIMEOUT="300"
 
 ```bash
 # Override provider for a single run
-GGA_PROVIDER="gemini" gga run
+GGA_PROVIDER="agy" gga run
 
 # Or export for the session
 export GGA_PROVIDER="ollama:llama3.2"

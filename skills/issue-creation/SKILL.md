@@ -27,7 +27,7 @@ Must include:
 - GGA version: `gga version`
 - Shell (bash version: `bash --version`)
 - OS (macOS/Linux/distro)
-- Provider being used (claude, gemini, codex, ollama)
+- Provider being used (claude, agy, codex, ollama)
 - Exact reproduction steps
 - Expected vs actual behavior
 

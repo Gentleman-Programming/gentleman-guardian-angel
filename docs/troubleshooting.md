@@ -11,7 +11,7 @@ Common issues and fixes for Gentleman Guardian Angel.
 ```bash
 # Check if your provider CLI is installed and in PATH
 which claude   # Should show: /usr/local/bin/claude or similar
-which gemini
+which agy
 which codex
 which ollama
 

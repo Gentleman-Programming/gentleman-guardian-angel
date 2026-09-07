@@ -6,7 +6,19 @@ Full version history for Gentleman Guardian Angel.
 
 ---
 
-## v2.10.1 (Latest)
+## v2.11.0 (Latest)
+
+- ⚠️ **BREAKING — feat(providers)**: Replaced the `gemini` provider with `agy` (Antigravity CLI)
+  - Google retired the standalone Gemini CLI and folded it into Antigravity, whose CLI is `agy`
+  - `PROVIDER="gemini"` is no longer recognized — update `.gga` configs to `PROVIDER="agy"`
+  - `PROVIDER="agy:<model>"` selects a model inline (e.g. `agy:gemini-3.1-pro-high`, `agy:claude-sonnet-4-6`); `agy models` lists available models
+  - Runs `agy --dangerously-skip-permissions --print=@<file>`: the prompt is handed off via a temp file so large prompts never hit ARG_MAX, and permissions are auto-approved because `agy` otherwise stalls on its headless permission prompt and returns an empty (ambiguous) response
+- ✅ **docs(providers)**: Updated provider tables, examples, and integration notes for Antigravity
+- ✅ **test(providers)**: Updated ARG_MAX unit/behavior specs and provider-info specs for `agy`
+
+---
+
+## v2.10.1
 
 - ✅ **fix(install)**: Anchor the `LIB_DIR` installer rewrite so Homebrew installs only patch the top-level assignment and do not corrupt the runtime resolver `if` statement.
 
