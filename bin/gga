@@ -59,8 +59,16 @@ source "$LIB_DIR/pr_mode.sh"
 # This ensures we exit cleanly without leaving git index in a bad state
 # when user presses Ctrl+C or the process is terminated
 
+# Temp files created while loading config (see sanitized_config_tmpfile). Declared here,
+# before the EXIT trap below, so cleanup() can always expand it safely.
+GGA_TMP_FILES=()
+
 cleanup() {
   local exit_code=$?
+  # Drop the sanitized-config temp files, if any.
+  if [[ ${#GGA_TMP_FILES[@]} -gt 0 ]]; then
+    rm -f "${GGA_TMP_FILES[@]}" 2>/dev/null || true
+  fi
   # Reset terminal colors in case we were in the middle of output
   echo -e "\033[0m" 2>/dev/null || true
   exit $exit_code
@@ -273,6 +281,26 @@ sanitize_config_file() {
   sed $'1s/^\xef\xbb\xbf//' "$config_file" | tr -d '\r'
 }
 
+# Materialize a sanitized copy of a config file as a REAL file on disk and echo its path.
+#
+# WHY NOT `source <(sanitize_config_file "$cfg")`: process substitution hands `source` an
+# unseekable pipe, and bash 3.2 (the /bin/bash macOS ships, and therefore what `env bash`
+# resolves to there) reads that pipe as empty — silently, with exit status 0. The config
+# then loads nothing at all: PROVIDER stays unset and FILE_PATTERNS, EXCLUDE_PATTERNS,
+# STRICT_MODE and TIMEOUT all fall back to their defaults.
+#
+# The CALLER must register the returned path in GGA_TMP_FILES. This function runs inside a
+# command substitution, i.e. a subshell: an append made in here would be discarded with the
+# subshell and the temp file would leak on every invocation.
+sanitized_config_tmpfile() {
+  local config_file="$1"
+  local tmp_file
+
+  tmp_file=$(mktemp) || return 1
+  sanitize_config_file "$config_file" > "$tmp_file"
+  echo "$tmp_file"
+}
+
 load_config() {
   # Reset to defaults
   PROVIDER=""
@@ -288,15 +316,21 @@ load_config() {
   # Load global config first (platform-aware path)
   GLOBAL_CONFIG=$(get_global_config_path)
   if [[ -f "$GLOBAL_CONFIG" ]]; then
+    local global_cfg_file
+    global_cfg_file=$(sanitized_config_tmpfile "$GLOBAL_CONFIG")
+    GGA_TMP_FILES+=("$global_cfg_file")
     # shellcheck source=/dev/null
-    source <(sanitize_config_file "$GLOBAL_CONFIG")
+    source "$global_cfg_file"
   fi
 
   # Load project config (overrides global)
   PROJECT_CONFIG=".gga"
   if [[ -f "$PROJECT_CONFIG" ]]; then
+    local project_cfg_file
+    project_cfg_file=$(sanitized_config_tmpfile "$PROJECT_CONFIG")
+    GGA_TMP_FILES+=("$project_cfg_file")
     # shellcheck source=/dev/null
-    source <(sanitize_config_file "$PROJECT_CONFIG")
+    source "$project_cfg_file"
   fi
 
   # Environment variable overrides everything
