@@ -10,7 +10,7 @@ When creating a pull request, opening a PR, or preparing changes for review.
 Format: `type/description` — validated by regex:
 
 ```
-^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)\/[a-z0-9._-]+$
+^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert|hot|rel)\/[a-z0-9._-]+$
 ```
 
 | Type | Example |
@@ -26,6 +26,8 @@ Format: `type/description` — validated by regex:
 | perf | `perf/cache-lookup-speed` |
 | build | `build/makefile-targets` |
 | revert | `revert/broken-hook-change` |
+| hot | `hot/fix-token-refresh` |
+| rel | `rel/v2-10-1` |
 
 **Rules**: description must be lowercase, only `a-z`, `0-9`, `.`, `_`, `-`.
 
