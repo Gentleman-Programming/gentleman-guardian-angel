@@ -11,6 +11,7 @@
 # - cursor: Cursor Agent CLI (optional :model)
 # - kilo: Kilo CLI (optional :model)
 # - kiro: Kiro CLI
+# - pi[:alias-or-provider/model][:effort]: Pi CLI
 # - ollama:<model>: Ollama with specified model
 # - lmstudio[:model]: LM Studio (optional model)
 # - github:<model>: GitHub Models (OpenAI-compatible API)
@@ -109,6 +110,24 @@ validate_provider() {
         echo ""
         echo "Configure Kiro's default model with kiro-cli settings instead."
         echo ""
+        return 1
+      fi
+      ;;
+    pi)
+      if ! command -v pi &> /dev/null; then
+        echo -e "${RED}❌ Pi CLI not found${NC}"
+        echo ""
+        echo "Install Pi CLI:"
+        echo "  npm install -g @earendil-works/pi-coding-agent"
+        echo ""
+        return 1
+      fi
+      # Fail on an unresolvable alias instead of falling back to a Pi default.
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      if ! resolve_pi_model "$model" >/dev/null; then
         return 1
       fi
       ;;
@@ -230,6 +249,7 @@ validate_provider() {
       echo "  - cursor[:model]"
       echo "  - kilo[:model]"
       echo "  - kiro"
+      echo "  - pi[:alias-or-provider/model][:effort]"
       echo "  - ollama:<model>"
       echo "  - lmstudio[:model]"
       echo "  - github:<model>"
@@ -284,6 +304,13 @@ execute_provider() {
       ;;
     kiro)
       execute_kiro "$prompt"
+      ;;
+    pi)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_pi "$model" "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -453,6 +480,157 @@ execute_kiro() {
   # prompt travels through stdin as context to avoid ARG_MAX failures.
   printf '%s' "$prompt" | kiro-cli chat --no-interactive "$kiro_instruction" 2>&1
   return "${PIPESTATUS[1]}"
+}
+
+# ============================================================================
+# Pi Implementation
+# ============================================================================
+
+# Role alias used when PROVIDER is a bare "pi".
+PI_DEFAULT_ROLE_ALIAS="reviewer-model"
+
+# Resolve a Pi model reference to a concrete --model value. References are an
+# alias from pi-ext-roles/settings.json or an explicit provider/model, each with
+# an optional trailing :effort. Alias chains are followed the same way the Pi
+# ext-roles shim resolves them: bounded depth, and failure rather than a silent
+# fallback when the alias or the settings file is missing.
+resolve_pi_model() {
+  local ref="${1:-}"
+  local agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+  local role_settings="$agent_dir/pi-ext-roles/settings.json"
+
+  if [[ -z "$ref" ]]; then
+    ref="$PI_DEFAULT_ROLE_ALIAS"
+  fi
+
+  # provider/model references are already concrete; keep any :effort suffix.
+  if [[ "$ref" == */* ]]; then
+    printf '%s\n' "$ref"
+    return 0
+  fi
+
+  if [[ ! -f "$role_settings" ]]; then
+    echo "Error: Pi model alias '$ref' needs $role_settings" >&2
+    return 1
+  fi
+  if ! command -v jq &> /dev/null; then
+    echo "Error: jq is required to resolve Pi model alias '$ref' from $role_settings" >&2
+    return 1
+  fi
+
+  local resolved
+  if ! resolved=$(jq -er --arg ref "$ref" '
+    .modelAliases as $aliases |
+    def splitref:
+      if test(":.*$") then [sub(":.*$"; ""), match(":([^:]+)$").captures[0].string]
+      else [., null] end;
+    def resolve($value; $effort; $depth):
+      if $depth > 10 then error("model alias chain exceeds 10 steps") else
+        ($value | splitref) as $parts |
+        ($effort // $parts[1]) as $resolved_effort |
+        if $aliases[$parts[0]] then resolve($aliases[$parts[0]]; $resolved_effort; $depth + 1)
+        elif ($parts[0] | contains("/")) then
+          {model: $parts[0], effort: $resolved_effort}
+        else error("unresolved model alias or effort") end
+      end;
+    resolve($ref; null; 0) | .model + (if .effort == null then "" else ":" + .effort end)
+  ' "$role_settings" 2>/dev/null); then
+    echo "Error: cannot resolve Pi model alias '$ref' from $role_settings" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$resolved"
+}
+
+# Print the models to try, one per line: the resolved model first, then the
+# remaining entries of the "reviewer" group when that group contains it. This
+# mirrors the private Pi shim this provider replaces: failover happens only for
+# members of the reviewer group, never for an explicitly pinned model.
+pi_reviewer_models() {
+  local resolved_model="$1"
+  local agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+  local ha_file="${PI_HA_CONFIG:-$agent_dir/ha.json}"
+
+  printf '%s\n' "$resolved_model"
+  [[ -f "$ha_file" ]] || return 0
+  command -v jq &> /dev/null || return 0
+  jq -e --arg m "$resolved_model" '.groups.reviewer.entries[]? | select(.id == $m)' "$ha_file" >/dev/null 2>&1 || return 0
+  jq -r --arg m "$resolved_model" '.groups.reviewer.entries[]?.id | select(. != null and . != "" and . != $m)' "$ha_file" 2>/dev/null || true
+  return 0
+}
+
+# Run one review per candidate model, reading the prompt from a file so retries
+# and the timeout path never put the prompt in argv.
+execute_pi_from_file() {
+  local model_ref="$1"
+  local prompt_file="$2"
+  local resolved_model output_file error_file candidate last_err
+  local -a models_to_try=()
+
+  if ! resolved_model=$(resolve_pi_model "$model_ref"); then
+    return 1
+  fi
+
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] && models_to_try+=("$candidate")
+  done < <(pi_reviewer_models "$resolved_model")
+
+  if ! output_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_pi_out.XXXXXX"); then
+    echo "Error: Failed to create temporary Pi output file" >&2
+    return 1
+  fi
+  if ! error_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_pi_err.XXXXXX"); then
+    echo "Error: Failed to create temporary Pi error file" >&2
+    rm -f "$output_file"
+    return 1
+  fi
+
+  local idx total=${#models_to_try[@]}
+  for (( idx = 0; idx < total; idx++ )); do
+    candidate="${models_to_try[$idx]}"
+    if pi --print --no-session --no-tools --no-extensions --no-skills \
+      --no-prompt-templates --no-themes --no-context-files --no-mcp --offline \
+      --model "$candidate" < "$prompt_file" > "$output_file" 2> "$error_file"; then
+      # Pi writes its window-notification escape (OSC 777) to stdout in print
+      # mode. Left in place it prefixes the review text and GGA can no longer
+      # parse the STATUS: line, which strict mode reports as "Could not
+      # determine review status".
+      sed -E $'s/\x1b\][^\x07]*\x07//g' "$output_file"
+      rm -f "$output_file" "$error_file"
+      return 0
+    fi
+
+    last_err=$(tr '\n' ' ' < "$error_file" 2>/dev/null | sed 's/[[:space:]]*$//')
+    if (( idx + 1 < total )); then
+      printf 'pi: model %s failed (%s); failing over to %s\n' \
+        "$candidate" "${last_err:-error}" "${models_to_try[$((idx + 1))]}" >&2
+    fi
+  done
+
+  cat "$error_file" >&2
+  rm -f "$output_file" "$error_file"
+  return 1
+}
+
+execute_pi() {
+  local model="$1"
+  local prompt="$2"
+  local prompt_file
+
+  if ! prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_pi_prompt.XXXXXX"); then
+    echo "Error: Failed to create temporary Pi prompt file" >&2
+    return 1
+  fi
+  if ! printf '%s' "$prompt" > "$prompt_file"; then
+    echo "Error: Failed to write Pi prompt" >&2
+    rm -f "$prompt_file"
+    return 1
+  fi
+
+  execute_pi_from_file "$model" "$prompt_file"
+  local status=$?
+  rm -f "$prompt_file"
+  return "$status"
 }
 
 execute_ollama() {
@@ -990,6 +1168,14 @@ get_provider_info() {
     kiro)
       echo "Kiro CLI"
       ;;
+    pi)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" || -z "$model" ]]; then
+        echo "Pi CLI"
+      else
+        echo "Pi CLI (model: $model)"
+      fi
+      ;;
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
@@ -1173,7 +1359,7 @@ execute_with_timeout() {
 # Execute provider with timeout and progress feedback
 # Usage: execute_provider_with_timeout <provider> <prompt> <timeout>
 #
-# For CLI providers (claude, gemini, codex, opencode, cursor, kilo, kiro), the prompt is written to a
+# For CLI providers (claude, gemini, codex, opencode, cursor, kilo, kiro, pi), the prompt is written to a
 # temp file and piped via stdin to avoid ARG_MAX limits on Windows (~8KB-32KB),
 # macOS (~256KB), and Linux (~128KB-2MB). Only the file path (short string) is
 # passed as an argument to execute_with_timeout, never the prompt content.
@@ -1185,7 +1371,7 @@ execute_provider_with_timeout() {
   local result=0
 
   case "$base_provider" in
-    claude|gemini|codex|opencode|cursor|kilo|kiro)
+    claude|gemini|codex|opencode|cursor|kilo|kiro|pi)
       # Write prompt to temp file ONCE to avoid ARG_MAX limits.
       # This is critical for large PRs that generate prompts > 128KB-256KB.
       # Only CLI providers are handled here. API-based providers keep their
@@ -1312,6 +1498,17 @@ execute_provider_with_timeout() {
           # shellcheck disable=SC2016
           execute_with_timeout "$timeout" "Kiro" \
             bash -c 'exec kiro-cli chat --no-interactive "$2" < "$1"' _ "$prompt_file" "Review the complete GGA prompt provided on stdin and respond with the required STATUS line."
+          result=$?
+          ;;
+        pi)
+          local model="${provider#*:}"
+          if [[ "$model" == "$provider" ]]; then
+            model=""
+          fi
+          # Failover runs inside execute_pi_from_file, so a single timeout
+          # window still covers the whole reviewer group.
+          execute_with_timeout "$timeout" "Pi" \
+            execute_pi_from_file "$model" "$prompt_file"
           result=$?
           ;;
       esac
