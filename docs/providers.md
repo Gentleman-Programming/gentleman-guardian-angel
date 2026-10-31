@@ -21,6 +21,7 @@ Use whichever AI CLI you have installed:
 | **Cursor Agent**  | `cursor[:model]`   | `echo "prompt" \| cursor-agent -p --output-format text` | [cursor.com](https://cursor.com)                                      |
 | **Kilo**          | `kilo[:model]`     | `echo "prompt" \| kilo run --auto` | `npm install -g @kilocode/cli`                                                     |
 | **Kiro**          | `kiro`             | `cat prompt.txt \| kiro-cli chat --no-interactive "Review stdin"` | [kiro.dev/downloads](https://kiro.dev/downloads/)                    |
+| **Pi**            | `pi[:alias-or-provider/model][:effort]` | `echo "prompt" \| pi --print --no-session ...` | `npm i -g @earendil-works/pi-coding-agent`                 |
 | **Ollama**        | `ollama:<model>`   | `ollama run <model> "prompt"`     | [ollama.ai](https://ollama.ai)                                                     |
 | **LM Studio**     | `lmstudio[:model]` | HTTP API call to local server     | [lmstudio.ai](https://lmstudio.ai)                                                 |
 | **GitHub Models** | `github:<model>`   | HTTP API via `gh auth token`      | [github.com/marketplace/models](https://github.com/marketplace/models)              |
@@ -60,6 +61,15 @@ PROVIDER="kilo:anthropic/claude-sonnet-4-5"
 
 # Use Kiro CLI
 PROVIDER="kiro"
+
+# Use Pi with the reviewer-model role alias from pi-ext-roles
+PROVIDER="pi"
+
+# Use Pi with another role alias
+PROVIDER="pi:developer-model"
+
+# Use Pi with an explicit model and effort
+PROVIDER="pi:anthropic/claude-sonnet-4-5:high"
 
 # Use Ollama with Llama 3.2
 PROVIDER="ollama:llama3.2"
@@ -168,6 +178,29 @@ printf 'Say hello' | kiro-cli chat --no-interactive 'Respond to the stdin prompt
 ```
 
 Kiro headless mode requires a small positional prompt, so GGA passes a short instruction in argv and sends the full review prompt through stdin. Kiro model selection is managed through Kiro CLI settings, not inline `PROVIDER="kiro:model"` config.
+
+### Pi
+
+Uses Pi in print mode through the account and models Pi already has configured. No separate API key is needed.
+
+```bash
+# Install
+npm install -g @earendil-works/pi-coding-agent
+
+# Configure GGA
+PROVIDER="pi"                      # reviewer-model role alias
+PROVIDER="pi:developer-model"       # any alias from pi-ext-roles settings
+PROVIDER="pi:anthropic/claude-sonnet-4-5:high"  # provider/model + effort
+
+# Test it works
+printf 'Say hello' | pi --print --no-session
+```
+
+The model reference is resolved with `jq` from `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/pi-ext-roles/settings.json`: aliases are followed through `modelAliases` (bounded chain), a trailing `:effort` overrides the alias effort, and an unresolvable alias is an error that names the settings file. There is no silent fallback to a Pi default.
+
+When the resolved model is a member of the `reviewer` group in `${PI_HA_CONFIG:-$HOME/.pi/agent/ha.json}`, GGA retries the remaining group entries in order on failure and reports each failover on stderr. A model outside that group is used as-is.
+
+The review runs without sessions, tools, extensions, skills, prompt templates, themes, context files or MCP servers, so the reviewed repository cannot influence the review. Pi's OSC 777 window notification is stripped from stdout before GGA parses the `STATUS:` line.
 
 ### MiniMax
 
