@@ -585,11 +585,28 @@ execute_pi_from_file() {
     return 1
   fi
 
-  local idx total=${#models_to_try[@]}
+  local idx total=${#models_to_try[@]} provider_ext
+  local -a ext=()
   for (( idx = 0; idx < total; idx++ )); do
     candidate="${models_to_try[$idx]}"
+    # A CLIProxyAPI route needs its provider extension loaded explicitly: the
+    # command disables extensions, and without this the route cannot resolve.
+    ext=()
+    if [[ "$candidate" == cliproxyapi/* ]]; then
+      provider_ext="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/npm/node_modules/@router-for-me/pi-cliproxyapi-provider/extensions/index.ts"
+      if [[ ! -f "$provider_ext" ]]; then
+        last_err="CLIProxyAPI provider extension not found: $provider_ext"
+        if (( idx + 1 < total )); then
+          printf 'pi: model %s failed (%s); failing over to %s\n' \
+            "$candidate" "$last_err" "${models_to_try[$((idx + 1))]}" >&2
+        fi
+        continue
+      fi
+      ext=(-e "$provider_ext")
+    fi
     if pi --print --no-session --no-tools --no-extensions --no-skills \
       --no-prompt-templates --no-themes --no-context-files --no-mcp --offline \
+      "${ext[@]+"${ext[@]}"}" \
       --model "$candidate" < "$prompt_file" > "$output_file" 2> "$error_file"; then
       # Pi writes its window-notification escape (OSC 777) to stdout in print
       # mode. Left in place it prefixes the review text and GGA can no longer
